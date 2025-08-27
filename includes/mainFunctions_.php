@@ -6,8 +6,8 @@
 // }
 
 // Asegurarse de que el nombre de la sesión esté configurado si es necesario para demoUI
-if (session_name() !== 'demoUI') {
-    session_name('demoUI');
+if (session_name() !== 'FactuFacil') {
+    session_name('FactuFacil');
 }
 
 // Habilitar la visualización de errores solo en entornos de desarrollo.
@@ -23,7 +23,7 @@ $port = 5432;
 // o maneja el error de forma segura para el usuario final.
 //print $_SESSION['dbname'] ?? 'No database name set in session.';
 
-$database = isset($_SESSION['dbname']) ? $_SESSION['dbname'] : 'registro_academico_10391'; // Considera un nombre de BD por defecto para casos de error o desarrollo
+$database = isset($_SESSION['dbname']) ? $_SESSION['dbname'] : 'sistema_facturacion'; // Considera un nombre de BD por defecto para casos de error o desarrollo
 
 //print 'Nombre base de dastos: ' . $database;
 // Obtener credenciales de la base de datos.

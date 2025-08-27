@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 // Asegurarse de que el usuario está logueado
@@ -15,14 +15,14 @@ if (!isset($_SESSION['userLogin']) || $_SESSION['userLogin'] !== true) {
 if (!isset($_SESSION['path_root'])) {
     // Si $_SESSION['path_root'] no está definido, intenta una ruta relativa o absoluta conocida.
     // Esto es una salvaguarda, lo ideal es que 'path_root' esté bien configurado en tu login.php o index.php
-    $_SESSION['path_root'] = trim($_SERVER['DOCUMENT_ROOT']) . "/registro_academico";
+    $_SESSION['path_root'] = trim($_SERVER['DOCUMENT_ROOT']) . "/FactuFacil";
 }
 // ruta de los archivos con su carpeta
 $path_root=trim($_SERVER['DOCUMENT_ROOT']);
     
 // Incluimos el archivo de funciones y conexi�n a la base de datos
 
-include($path_root."/registro_academico/includes/mainFunctions_.php");
+include($path_root."/FactuFacil/includes/mainFunctions_.php");
 
 $codigo_perfil = $_SESSION['codigo_perfil'] ?? null; // Obtener el código de perfil de la sesión
 

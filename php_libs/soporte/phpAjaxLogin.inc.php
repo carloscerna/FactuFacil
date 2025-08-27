@@ -1,7 +1,7 @@
 <?php
 // Iniciar la sesión si no está iniciada. Siempre debe ir al principio.
 if (session_status() == PHP_SESSION_NONE) {
-    session_name('demoUI');
+    session_name('FactuFacil');
     session_start();
 }
 
@@ -23,9 +23,9 @@ $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 // Incluimos el archivo de funciones y conexión a la base de datos.
 // Se asume que mainFunctions_.php establece $dblink y $errorDbConexion.
 // Es crucial que mainFunctions_.php no haga un 'die()' directo en caso de error de conexión si esperas un JSON.
-include($path_root . "/registro_academico/includes/mainFunctions_.php");
+include($path_root . "/FactuFacil/includes/mainFunctions_.php");
 // Incluir funciones auxiliares si son necesarias (ej. convertirtexto)
-include($path_root . "/registro_academico/includes/funciones.php");
+include($path_root . "/FactuFacil/includes/funciones.php");
 
 // Validar conexión con la base de datos.
 // $errorDbConexion es establecido en mainFunctions_.php

@@ -1,6 +1,6 @@
 <?php
 // iniciar sesssion.
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 // Nombre de la base de datos.

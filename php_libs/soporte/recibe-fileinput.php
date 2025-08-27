@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 // COMPROBACIÓN INICIAL ANTES DE CONTINUAR CON EL PROCESO DE UPLOAD
 // **********************************************************************
@@ -15,11 +15,11 @@ if (empty($_FILES['file-es'])) {
 // ruta de los archivos con su carpeta
     $path_root=trim($_SERVER['DOCUMENT_ROOT']);
 // archivos que se incluyen.
-	include($path_root."/registro_academico/includes/funciones_2.php");
+	include($path_root."/FactuFacil/includes/funciones_2.php");
 	$codigo_institucion = $_SESSION['codigo_institucion'];
 	$ruta = '../files/'; //Decalaramos una variable con la ruta en donde almacenaremos los archivos
 // Definimos la constante con el directorio de destino de las descargas
-	define('DIR_DESCARGAS',$path_root.'/registro_academico/files/'.$codigo_institucion);
+	define('DIR_DESCARGAS',$path_root.'/FactuFacil/files/'.$codigo_institucion);
 //define('DIR_DESCARGAS',__DIR__.DIRECTORY_SEPARATOR .'descargas');
 // Obtenemos el array de ficheros enviados
 	$ficheros = $_FILES['file-es'];

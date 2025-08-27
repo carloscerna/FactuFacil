@@ -2,7 +2,7 @@
 // ruta de los archivos con su carpeta
 $path_root=trim($_SERVER['DOCUMENT_ROOT']);
 //Load Composer's autoloader
-require "$path_root/registro_academico/vendor/autoload.php";
+require "$path_root/FactuFacil/vendor/autoload.php";
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -31,7 +31,7 @@ try {
     $mail->addAttachment($rutaArchivo);
     // Construir el cuerpo del correo
     $nombre = "Registro Académico";
-    $rutaImagen = "$path_root/registro_academico/img/logo_cerz.png"; // Ruta de la imagen
+    $rutaImagen = "$path_root/FactuFacil/img/logo_cerz.png"; // Ruta de la imagen
     $mail->Body = "
         <p>Hola,</p>
         <p>Boleta de Calificaciones.</p>

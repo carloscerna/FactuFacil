@@ -1,13 +1,13 @@
 <?php
 // iniciar sesssion.
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 // omitir errores.
 ini_set("display_error", true);
 // variables/conexion.
     $host = 'localhost';
     $port = 5432;
-    $database = 'registro_academico_10391';
+    $database = 'sistema_facturacion';
     $username = 'postgres';
     $password = 'Orellana';
 //Construimos el DSN//

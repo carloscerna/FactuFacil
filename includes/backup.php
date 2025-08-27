@@ -2,7 +2,7 @@
 // ruta de los archivos con su carpeta
     $path_root=trim($_SERVER['DOCUMENT_ROOT']);
 // archivos que se incluyen.
-    include($path_root."/registro_academico/includes/so_version.php");
+    include($path_root."/FactuFacil/includes/so_version.php");
 // Extrar la información del sistema operativo.
     //$info["os"];
 // Ejecutar. Depende de la condición.
@@ -10,7 +10,7 @@
         exec("sudo sh pg_backup.sh");    
     }
     if($info["os"] === "WIN"){
-        exec("backup-10391.bat");    
+        exec("backup.bat");    
     }
 
 //
@@ -23,7 +23,7 @@
     $cadena_fecha_actual = date_format($date, 'd-m-Y g:i a');
     //print $cadena_fecha_actual;
 // Guardar Información en la tabla. control_respaldos.
-    include($path_root."/registro_academico/includes/mainFunctions_conexion.php");
+    include($path_root."/FactuFacil/includes/mainFunctions_conexion.php");
 // Construir Consulta.
     $query = "INSERT INTO control_respaldos (fecha_hora) VALUES ('$cadena_fecha_actual')";
 //  Ejecución del Query.
