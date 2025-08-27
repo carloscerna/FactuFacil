@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 // Comprobar si existen las variables de SESSION.

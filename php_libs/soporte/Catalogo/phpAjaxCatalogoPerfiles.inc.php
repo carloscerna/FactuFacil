@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 if (!isset($_SESSION['userLogin']) || $_SESSION['userLogin'] !== true) {
@@ -8,7 +8,7 @@ if (!isset($_SESSION['userLogin']) || $_SESSION['userLogin'] !== true) {
 }
 
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
-include($path_root . "/registro_academico/includes/mainFunctions_.php"); // Tu archivo de conexión a DB
+include($path_root . "/FactuFacil/includes/mainFunctions_.php"); // Tu archivo de conexión a DB
 
 header('Content-Type: application/json;charset=utf-8');
 

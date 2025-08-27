@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 // Asegurarse de que el usuario está logueado
@@ -11,7 +11,7 @@ if (!isset($_SESSION['userLogin']) || $_SESSION['userLogin'] !== true) {
 
 // Incluir la conexión a la base de datos
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
-include($path_root . "/registro_academico/includes/mainFunctions_.php");
+include($path_root . "/FactuFacil/includes/mainFunctions_.php");
 
 // Verificar la conexión a la base de datos
 if (!isset($dblink) || !($dblink instanceof PDO)) {

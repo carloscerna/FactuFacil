@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 // Directorio Ra�z de la app
 // Es utilizando en templateEngine.inc.php

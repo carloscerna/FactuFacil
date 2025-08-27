@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 header('Content-Type: application/json;charset=utf-8');
@@ -15,7 +15,7 @@ if (!isset($_SESSION['userLogin']) || $_SESSION['userLogin'] !== true || !in_arr
 
 // Incluir la conexión a la base de datos
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
-include($path_root . "/registro_academico/includes/mainFunctions_.php"); // Aquí se establece $dblink y $errorDbConexion
+include($path_root . "/FactuFacil/includes/mainFunctions_.php"); // Aquí se establece $dblink y $errorDbConexion
 
 // Verificar si hubo un error de conexión
 if ($errorDbConexion || !$dblink) {

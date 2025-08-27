@@ -1,11 +1,11 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 
 // Comprobar si existen las variables de SESSION.
 if(empty($_SESSION['userNombre']))
 {
-    header('Location: /registro_academico');
+    header('Location: /FactuFacil');
 }else{
 // Es utilizando en templateEngine.inc.php
 $root = '';

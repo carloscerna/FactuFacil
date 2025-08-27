@@ -1,5 +1,5 @@
 <?php
-session_name('demoUI');
+session_name('FactuFacil');
 session_start();
 $_SESSION['path_root'] = trim($_SERVER['DOCUMENT_ROOT']);
 // Es utilizando en templateEngine.inc.php
