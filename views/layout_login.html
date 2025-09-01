@@ -49,6 +49,12 @@
 <div class="container-fluid login-container d-flex justify-content-center align-items-center">
     <div class="login-card card p-4">
         <div class="card-body">
+            {# Agrega este bloque para mostrar el mensaje de error #}
+            {% if error_message %}
+            <div class="alert alert-danger text-center" role="alert">
+                {{ error_message }}
+            </div>
+            {% endif %}
             <div class="text-center mb-4">
                 <div class="alert alert-info border-0 p-3" role="alert"> {# border-0 para quitar borde predeterminado #}
                     <h2 class="alert-heading mb-0">FactuFácil</h2> {# alert-heading para estilo de título #}

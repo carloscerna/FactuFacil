@@ -2,6 +2,7 @@
     "require": {
         "phpoffice/phpspreadsheet": "^1.25",
         "twbs/bootstrap": "5.3.2",
-        "phpmailer/phpmailer": "^6.9"
+        "phpmailer/phpmailer": "^6.9",
+        "twig/twig": "3.0"
     }
 }
