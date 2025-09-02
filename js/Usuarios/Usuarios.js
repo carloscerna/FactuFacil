@@ -45,7 +45,7 @@ $(function () {
                 { "data": "acciones", "orderable": false, "searchable": false } // Columna de acciones no ordenable ni buscable
             ],
             "language": {
-                "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/es_es.json" // Traducción al español
+                "url": "php_libs/idioma/es_es.json" // Traducción al español
             },
             "responsive": true // Habilitar responsividad
         });

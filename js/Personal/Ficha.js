@@ -66,7 +66,7 @@ var listar = function(){
                     {"data":"fecha_nacimiento"},
                     {"data":"dui"},
 					{"data":"nit"},
-					{"data":"nip"},
+					{"data":"isss"},
 				],
 				// LLama a los diferentes mensajes que están en español.
 				"language": idioma_espanol

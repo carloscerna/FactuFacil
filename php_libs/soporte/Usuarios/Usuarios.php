@@ -14,7 +14,7 @@ $contenidoOK = "";
 // Ruta de los archivos con su carpeta (ajusta según tu estructura de carpetas)
     $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 // Incluimos el archivo de funciones y conexión a la base de datos
-	include($path_root."/registro_academico/includes/mainFunctions_conexion.php");
+	include($path_root."/FactuFacil/includes/mainFunctions_.php");
 
 
 // Función para hashear la contraseña (importante para la seguridad)
@@ -41,7 +41,7 @@ if ($errorDbConexion == false) {
                           FROM usuarios u
                           INNER JOIN personal p ON u.codigo_personal = p.id_personal
                           INNER JOIN catalogo_perfil cp ON u.codigo_perfil = cp.codigo
-                          LEFT JOIN informacion_institucion ii ON u.codigo_escuela = ii.codigo_institucion
+                          LEFT JOIN instituciones ii ON u.codigo_escuela = ii.codigo_institucion
                           ORDER BY u.nombre"; // Ordenar para una visualización consistente
                 
                 try {
@@ -112,7 +112,7 @@ if ($errorDbConexion == false) {
 
                     // Insertar en la tabla 'usuarios'
                     // Asegúrate de que 'base_de_datos' sea apropiado para tu lógica de negocio.
-                    $dbName = $_SESSION['dbname'] ?? 'registro_academico'; // Usa la base de datos de la sesión o una por defecto
+                    $dbName = $_SESSION['dbname'] ?? 'sistema_facturacion'; // Usa la base de datos de la sesión o una por defecto
 
                     $query = "INSERT INTO usuarios (nombre, password, codigo_personal, codigo_perfil, base_de_datos, codigo_escuela)
                               VALUES (?, ?, ?, ?, ?, ?)";
@@ -222,7 +222,7 @@ if ($errorDbConexion == false) {
                 break;
             
             case 'GetInstituciones': // Nueva acción para obtener instituciones
-                $query = "SELECT codigo_institucion, nombre_institucion FROM informacion_institucion ORDER BY nombre_institucion";
+                $query = "SELECT codigo_institucion, nombre_institucion FROM instituciones ORDER BY nombre_institucion";
                 try {
                     $stmt = $dblink->query($query);
                     $instituciones = $stmt->fetchAll(PDO::FETCH_ASSOC);

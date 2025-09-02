@@ -19,8 +19,8 @@ $fila_array = 0;
 // ruta de los archivos con su carpeta
     $path_root=trim($_SERVER['DOCUMENT_ROOT']);    
 // Incluimos el archivo de funciones y conexi�n a la base de datos
-	include($path_root."/registro_academico/includes/funciones.php");
-	include($path_root."/registro_academico/includes/mainFunctions_conexion.php");
+	include($path_root."/FactuFacil/includes/funciones.php");
+	include($path_root."/FactuFacil/includes/mainFunctions_.php");
 // Validar conexi�n con la base de datos
 if($errorDbConexion == false){
 	// Validamos qe existan las variables post
@@ -87,7 +87,7 @@ if($errorDbConexion == false){
 					p.tipo_sangre, p.codigo_estudio, p.codigo_vivienda, p.codigo_afp, p.nombre_conyuge,
 					p.codigo_cargo, p.fecha_ingreso, p.fecha_retiro, 
 					p.numero_cuenta,
-					p.codigo_tipo_licencia, p.licencia, p.dui, p.nit, p.isss, p.afp, p.nip,
+					p.codigo_tipo_licencia, p.licencia, p.dui, p.nit, p.isss, p.afp, 
 					p.comentario
 						FROM personal p
 							WHERE id_personal = '$id_'
@@ -132,7 +132,7 @@ if($errorDbConexion == false){
 							$isss = trim($listado['isss']);
 							$nit = trim($listado['nit']);
 							$afp = trim($listado['afp']);
-							$nip = trim($listado['nip']);
+							
 							$comentario = trim($listado['comentario']);
 						//	Logo.
 							$url_foto = trim($listado['foto']);
@@ -209,11 +209,11 @@ if($errorDbConexion == false){
 					$fecha_ingreso = trim($_POST['txtFechaIngreso']);
 					$fecha_retiro = trim($_POST['txtFechaRetiro']);
 
-					$nip = trim($_POST['txtNip']);
+					
 					$dui = trim($_POST['txtDui']);
 					$isss = trim($_POST['txtIsss']);
 					$nit = trim($_POST['txtNit']);
-					$afp = trim($_POST['txtNup']);
+					
 					$comentario = htmlspecialchars(trim($_POST['txtComentario']));
 				// Query
 					$query = "INSERT INTO personal (nombres, apellidos, fecha_nacimiento, edad, codigo_genero,
@@ -222,7 +222,7 @@ if($errorDbConexion == false){
 						codigo_municipio, codigo_departamento, direccion,
 						telefono_residencia, telefono_celular, 
 						correo_electronico, codigo_cargo, fecha_ingreso, 
-						fecha_retiro, dui, nit, afp, nip,
+						fecha_retiro, dui, nit, afp, 
 						codigo_estatus)
 						VALUES ('$nombre', '$apellido', '$fecha_nacimiento', '$edad', '$codigo_genero',
 							'$codigo_estado_civil', '$tipo_sangre', '$codigo_estudios', 
@@ -231,7 +231,7 @@ if($errorDbConexion == false){
 							'$telefono_fijo', '$telefono_movil', 
 							'$correo_electronico', '$codigo_cargo', '$fecha_ingreso', 
 							'$fecha_retiro',
-							'$dui','$nit','$afp', '$nip',
+							'$dui','$nit','$afp', 
 							'$codigo_estatus')";
 					// Ejecutamos el query
 						$resultadoQuery = $dblink -> query($query);              
@@ -279,7 +279,7 @@ if($errorDbConexion == false){
 					$nip = trim($_POST['txtNip']);
 					$isss = trim($_POST['txtIsss']);
 					$nit = trim($_POST['txtNit']);
-					$afp = trim($_POST['txtNup']);
+					
 					$comentario = htmlspecialchars(trim($_POST['txtComentario']));
 					//$ = htmlspecialchars(trim($_POST['']),ENT_QUOTES,'UTF-8');
 					//$ = trim($_POST['']);
@@ -290,14 +290,14 @@ if($errorDbConexion == false){
 							codigo_municipio = '%s', codigo_departamento = '%s', direccion = '%s',
 							telefono_residencia = '%s', telefono_celular = '%s', correo_electronico = '%s',
 							codigo_cargo = '%s', fecha_ingreso = '%s', fecha_retiro = '%s', 
-							dui = '%s', nit = '%s', isss = '%s', afp = '%s', nip = '%s',
+							dui = '%s', nit = '%s', isss = '%s', afp = '%s', 
 							comentario = '%s', codigo_estatus = '%s'
 							WHERE id_personal = %d",
 							$nombre, $apellido, $fecha_nacimiento, $edad, $codigo_genero, $codigo_estado_civil, $tipo_sangre, $codigo_estudios, $codigo_tipo_vivienda, $codigo_afp, $nombre_conyuge,
 							$codigo_municipio, $codigo_departamento, $direccion,
 							$telefono_fijo, $telefono_movil, $correo_electronico,
 							$codigo_cargo, $fecha_ingreso, $fecha_retiro, 
-							$dui, $nit, $isss, $afp, $nip,
+							$dui, $nit, $isss, $afp, 
 							$comentario, $codigo_estatus,
                             $codigo_personal);	
 

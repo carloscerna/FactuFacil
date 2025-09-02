@@ -1,5 +1,5 @@
 <?php
-session_name('FactuFacil');
+session_name('demoUI');
 session_start();
 
 // Comprobar si existen las variables de SESSION.
@@ -9,9 +9,12 @@ if(empty($_SESSION['userNombre']))
 }else{
 // Es utilizando en templateEngine.inc.php
 $root = '';
+$Id = $_REQUEST['id'];
+$accion = $_REQUEST['accion'];
+$_SESSION['id_personal'] = $_REQUEST['id'];
     include('includes/templateEngine.inc.php');
 
-    $twig->display('Personal/Personal.html',array(
+    $twig->display('/Personal/EditarNuevoFicha.html',array(
         "userName" => $_SESSION['userNombre'],
         "userID" => $_SESSION['userID'],
         "codigo_perfil" => $_SESSION['codigo_perfil'],
@@ -20,7 +23,9 @@ $root = '';
         "nombre_institucion" => $_SESSION['institucion'],
         "nombre_personal" => $_SESSION['nombre_personal'],
         "nombre_perfil" => $_SESSION['nombre_perfil'],
-        "codigo_institucion" => $_SESSION['codigo_institucion']
+        "codigo_institucion" => $_SESSION['codigo_institucion'],
+        "id" => $Id,
+        "accion" => $accion
     ));
 }
 ?>

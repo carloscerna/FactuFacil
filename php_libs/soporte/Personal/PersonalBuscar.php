@@ -21,7 +21,7 @@ $datos = array();
     
 // Incluimos el archivo de funciones y conexi�n a la base de datos
 
-include($path_root."/registro_academico/includes/mainFunctions_conexion.php");
+include($path_root."/FactuFacil/includes/mainFunctions_.php");
 
 // Validar conexi�n con la base de datos
 if($errorDbConexion == false){
@@ -36,7 +36,7 @@ if($errorDbConexion == false){
 				// Armamos el query.
 				$query = "SELECT p.id_personal, p.codigo_estatus, cat_cargo.descripcion, btrim(p.nombres || CAST(' ' AS VARCHAR) || p.apellidos) AS nombre_empleado, p.telefono_celular,
 							to_char(p.fecha_nacimiento,'dd/mm/yyyy') as fecha_nacimiento, p.edad, 
-							p.dui, p.nit, p.nip
+							p.dui, p.nit, p.isss
                                 FROM personal p
 									INNER JOIN catalogo_cargo cat_cargo ON cat_cargo.codigo = p.codigo_cargo
                                     WHERE p.codigo_cargo <> ''
