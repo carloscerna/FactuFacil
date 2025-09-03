@@ -88,44 +88,53 @@ $('#selectDepartamento').on('change', function() {
     let selectMunicipio = $('#selectMunicipio');
     let selectDistrito = $('#selectDistrito');
 
-    // Resetear los select de Municipio y Distrito
+    // Vaciar y resetear los select de Municipio y Distrito
     selectMunicipio.empty().append('<option value="">Seleccione...</option>');
     selectDistrito.empty().append('<option value="">Seleccione...</option>');
 
     if (codigo_departamento) {
+        // Hacemos la llamada AJAX para obtener los municipios del departamento
         $.ajax({
             url: "admin/personal/crud_personal.php",
             type: "POST",
             dataType: "json",
             data: { accion: "obtenerMunicipios", codigo_departamento: codigo_departamento },
             success: function (response) {
-                $.each(response.municipios, function (key, item) {
-                    selectMunicipio.append(`<option value="${item.codigo_municipio}">${item.descripcion}</option>`);
-                });
+                if (response.respuesta) {
+                    $.each(response.municipios, function (key, item) {
+                        selectMunicipio.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
+                    });
+                }
             }
         });
     }
 });
-
 // Evento que se dispara al seleccionar un Municipio
 $('#selectMunicipio').on('change', function() {
-    const codigo_municipio = $(this).val();
+    const codigo_municipio = $("#selectMunicipio").val();
+    const codigo_departamento = $('#selectDepartamento').val(); // Obtener el código del departamento seleccionado
     let selectDistrito = $('#selectDistrito');
-    const codigo_departamento = $('#selectDepartamento').val();
 
-    // Resetear el select de Distrito
+    // Vaciar y resetear el select de Distrito
     selectDistrito.empty().append('<option value="">Seleccione...</option>');
 
     if (codigo_municipio) {
+        // Hacemos la llamada AJAX para obtener los distritos del municipio
         $.ajax({
             url: "admin/personal/crud_personal.php",
             type: "POST",
             dataType: "json",
-            data: { accion: "obtenerDistritos", codigo_municipio: codigo_municipio, codigo_departamento: codigo_departamento },
+            data: { 
+                accion: "obtenerDistritos", 
+                codigo_municipio: codigo_municipio,
+                codigo_departamento: codigo_departamento // ¡Enviar ambas variables!
+            },
             success: function (response) {
-                $.each(response.distritos, function (key, item) {
-                    selectDistrito.append(`<option value="${item.codigo_distrito}">${item.descripcion}</option>`);
-                });
+                if (response.respuesta) {
+                    $.each(response.distritos, function (key, item) {
+                        selectDistrito.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
+                    });
+                }
             }
         });
     }
@@ -160,7 +169,7 @@ $('#selectMunicipio').on('change', function() {
                             // Limpiar y llenar el select de municipios
                                 $('#selectMunicipio').empty().append('<option value="">Seleccione...</option>');
                                 $.each(response_municipios.municipios, function(key, item) {
-                                    $('#selectMunicipio').append(`<option value="${item.codigo_municipio}">${item.descripcion}</option>`);
+                                    $('#selectMunicipio').append(`<option value="${item.codigo}">${item.descripcion}</option>`);
                                 });
                                 // 4. Seleccionar el Municipio
                                 $('#selectMunicipio').val(personal.codigo_municipio);
@@ -176,7 +185,7 @@ $('#selectMunicipio').on('change', function() {
                                             // Limpiar y llenar el select de distritos
                                             $('#selectDistrito').empty().append('<option value="">Seleccione...</option>');
                                             $.each(response_distritos.distritos, function(key, item) {
-                                                $('#selectDistrito').append(`<option value="${item.codigo_distrito}">${item.descripcion}</option>`);
+                                                $('#selectDistrito').append(`<option value="${item.codigo}">${item.descripcion}</option>`);
                                             });
                                             // 6. Seleccionar el Distrito
                                             $('#selectDistrito').val(personal.codigo_distrito);

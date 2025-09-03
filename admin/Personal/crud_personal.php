@@ -158,7 +158,7 @@ switch ($accion) {
         $codigo_municipio = $_POST['codigo_municipio'] ?? '';
         $codigo_departamento = $_POST['codigo_departamento'] ?? '';
         try {
-            $sql = "SELECT codigo, descripcion FROM catalogo_distritos WHERE codigo_municipio = ?, codigo_departamento ORDER BY descripcion";
+            $sql = "SELECT codigo, descripcion FROM catalogo_distritos WHERE codigo_municipio = ? AND codigo_departamento = ? ORDER BY descripcion";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$codigo_municipio, $codigo_departamento]);
             $distritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
