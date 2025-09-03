@@ -19,12 +19,12 @@ $(function () {
                 "defaultContent": "<div class='text-center'><div class='btn-group'><button class='btn btn-warning btn-sm btnEditar'><i class='fas fa-edit'></i></button><button class='btn btn-danger btn-sm btnBorrar'><i class='fas fa-trash-alt'></i></button></div></div>"
             }
         ],
-        "language": { "url": "//cdn.datatables.net/plug-ins/1.11.5/i18n/es_es.json" }
+        "language": { "url": "php_libs/idioma/es_es.json" }
     });
 
     // Función para poblar todos los catálogos en el formulario
     function cargarCatalogos() {
-        $.ajax({
+        return $.ajax({
             url: "admin/personal/crud_personal.php",
             type: "POST",
             dataType: "json",
@@ -38,10 +38,23 @@ $(function () {
                             select.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
                         });
                     });
+                } else {
+                    toastr.error("Error en la respuesta del servidor al cargar los catálogos.");
                 }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                toastr.error("Error al cargar los catálogos. Estado: " + textStatus);
             }
         });
     }
+
+    // Aplicar las máscaras de entrada a los campos
+    $('#dui').mask('00000000-0');
+    $('#nit').mask('0000-000000-000-0');
+    $('#isss').mask('000000000-0');
+    $('#telefono_celular').mask('0000-0000');
+    
+    // El campo de correo electrónico no usa máscara, se valida con tipo 'email'
 
     // Evento para el botón "Nuevo Registro"
     $('#btnNuevoPersonal').on('click', function () {
@@ -51,7 +64,72 @@ $(function () {
         cargarCatalogos();
         $('.form-control').removeClass('is-invalid is-valid');
     });
+// Función para poblar el select de Departamentos (se carga al inicio)
+function cargarDepartamentos() {
+    // La acción para obtener los departamentos debe existir en tu crud_personal.php
+    $.ajax({
+        url: "admin/personal/crud_personal.php",
+        type: "POST",
+        dataType: "json",
+        data: { accion: "obtenerDepartamentos" },
+        success: function (response) {
+            let select = $('#selectDepartamento');
+            select.empty().append('<option value="">Seleccione...</option>');
+            $.each(response.departamentos, function (key, item) {
+                select.append(`<option value="${item.codigo_departamento}">${item.descripcion}</option>`);
+            });
+        }
+    });
+}
 
+// Evento que se dispara al seleccionar un Departamento
+$('#selectDepartamento').on('change', function() {
+    const codigo_departamento = $(this).val();
+    let selectMunicipio = $('#selectMunicipio');
+    let selectDistrito = $('#selectDistrito');
+
+    // Resetear los select de Municipio y Distrito
+    selectMunicipio.empty().append('<option value="">Seleccione...</option>');
+    selectDistrito.empty().append('<option value="">Seleccione...</option>');
+
+    if (codigo_departamento) {
+        $.ajax({
+            url: "admin/personal/crud_personal.php",
+            type: "POST",
+            dataType: "json",
+            data: { accion: "obtenerMunicipios", codigo_departamento: codigo_departamento },
+            success: function (response) {
+                $.each(response.municipios, function (key, item) {
+                    selectMunicipio.append(`<option value="${item.codigo_municipio}">${item.descripcion}</option>`);
+                });
+            }
+        });
+    }
+});
+
+// Evento que se dispara al seleccionar un Municipio
+$('#selectMunicipio').on('change', function() {
+    const codigo_municipio = $(this).val();
+    let selectDistrito = $('#selectDistrito');
+    const codigo_departamento = $('#selectDepartamento').val();
+
+    // Resetear el select de Distrito
+    selectDistrito.empty().append('<option value="">Seleccione...</option>');
+
+    if (codigo_municipio) {
+        $.ajax({
+            url: "admin/personal/crud_personal.php",
+            type: "POST",
+            dataType: "json",
+            data: { accion: "obtenerDistritos", codigo_municipio: codigo_municipio, codigo_departamento: codigo_departamento },
+            success: function (response) {
+                $.each(response.distritos, function (key, item) {
+                    selectDistrito.append(`<option value="${item.codigo_distrito}">${item.descripcion}</option>`);
+                });
+            }
+        });
+    }
+});
     // Evento para el botón "Editar"
     $('#tablaPersonal tbody').on('click', '.btnEditar', function () {
         let fila = $(this).closest("tr");
@@ -59,25 +137,84 @@ $(function () {
         $('#personalModalLabel').text('Editar Registro');
         $('#id_personal').val(id_personal);
 
-        $.ajax({
-            url: "admin/personal/crud_personal.php",
-            type: "POST",
-            dataType: "json",
-            data: { accion: 'obtenerPersonal', id_personal: id_personal },
-            success: function(response) {
-                if (response.respuesta) {
-                    let personal = response.personal;
-                    $('#nombres').val(personal.nombres);
-                    $('#apellidos').val(personal.apellidos);
-                    $('#dui').val(personal.dui);
-                    $('#nit').val(personal.nit);
-                    $('#isss').val(personal.isss);
-                    // ... (Poblar el resto de los campos y select) ...
-                    cargarCatalogos();
-                    $('#personalModal').modal('show');
-                } else {
-                    toastr.error(response.mensaje);
-                }
+        cargarCatalogos().done(function(response) {
+            if (response.respuesta) {
+                $.ajax({
+                    url: "admin/personal/crud_personal.php",
+                    type: "POST",
+                    dataType: "json",
+                    data: { accion: 'obtenerPersonal', id_personal: id_personal },
+                    success: function(response) {
+                        if (response.respuesta) {
+                            let personal = response.personal;
+
+                            // Recorrer el objeto 'personal' y recortar los espacios en blanco
+                                    for (const key in personal) {
+                                        if (personal.hasOwnProperty(key) && typeof personal[key] === 'string') {
+                                            personal[key] = personal[key].trim();
+                                        }
+                                    }
+                            // Lógica para rellenar los selects geográficos
+                            $('#selectDepartamento').val(personal.codigo_departamento);
+                            
+                            // Limpiar y llenar el select de municipios
+                                $('#selectMunicipio').empty().append('<option value="">Seleccione...</option>');
+                                $.each(response_municipios.municipios, function(key, item) {
+                                    $('#selectMunicipio').append(`<option value="${item.codigo_municipio}">${item.descripcion}</option>`);
+                                });
+                                // 4. Seleccionar el Municipio
+                                $('#selectMunicipio').val(personal.codigo_municipio);
+
+                                // 5. Cargar los Distritos del Municipio seleccionado
+                                $.ajax({
+                                    url: "admin/personal/crud_personal.php",
+                                    type: "POST",
+                                    dataType: "json",
+                                    data: { accion: 'obtenerDistritos', codigo_municipio: personal.codigo_municipio },
+                                    success: function(response_distritos) {
+                                        if (response_distritos.respuesta) {
+                                            // Limpiar y llenar el select de distritos
+                                            $('#selectDistrito').empty().append('<option value="">Seleccione...</option>');
+                                            $.each(response_distritos.distritos, function(key, item) {
+                                                $('#selectDistrito').append(`<option value="${item.codigo_distrito}">${item.descripcion}</option>`);
+                                            });
+                                            // 6. Seleccionar el Distrito
+                                            $('#selectDistrito').val(personal.codigo_distrito);
+
+                                            // Finalmente, mostrar el modal
+                                            $('#personalModal').modal('show');
+                                        } else {
+                                            toastr.error('Error al cargar los distritos.');
+                                        }
+                                    }
+                                });
+
+                            $('#nombres').val(personal.nombres);
+                            $('#apellidos').val(personal.apellidos);
+                            $('#dui').val(personal.dui);
+                            $('#nit').val(personal.nit);
+                            $('#isss').val(personal.isss);
+                            $('#fecha_nacimiento').val(personal.fecha_nacimiento);
+                            $('#fecha_ingreso').val(personal.fecha_ingreso);
+                            $('#salario').val(personal.salario);
+                            $('#pago_diario').val(personal.pago_diario);
+                            $('#telefono_celular').val(personal.telefono_celular);
+                            $('#correo_electronico').val(personal.correo_electronico);
+                            $('#direccion').val(personal.direccion);
+                            
+                            // Poblar los SELECTs
+                            $('#selectGenero').val(personal.codigo_genero);
+                            $('#selectEstadocivil').val(personal.codigo_estado_civil);
+                            $('#selectEstatus').val(personal.codigo_estatus);
+                            $('#selectCargo').val(personal.codigo_cargo);
+                            // ... (resto de select) ...
+                            
+                            $('#personalModal').modal('show');
+                        } else {
+                            toastr.error(response.mensaje);
+                        }
+                    }
+                });
             }
         });
     });
@@ -86,6 +223,7 @@ $(function () {
     $('#personalForm').submit(function (e) {
         e.preventDefault();
         let formData = $(this).serialize();
+    
         $.ajax({
             url: "admin/personal/crud_personal.php",
             type: "POST",

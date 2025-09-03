@@ -4,17 +4,24 @@
 session_name('FactuFacil');
 session_start();
 
-// Verifica que el usuario esté autenticado.
 if (empty($_SESSION['userNombre'])) {
     header('Content-Type: application/json');
     echo json_encode(['respuesta' => false, 'mensaje' => 'Sesión no válida.']);
     exit();
 }
+
 // ruta de los archivos con su carpeta
-    $path_root=trim($_SERVER['DOCUMENT_ROOT']);    
-	include($path_root."/FactuFacil/includes/mainFunctions_.php");
+$path_root = trim($_SERVER['DOCUMENT_ROOT']);
+include($path_root."/FactuFacil/includes/mainFunctions_.php");
 $pdo = $dblink;
 $accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
+
+// Recortar espacios en blanco para todos los datos del formulario (paso de seguridad)
+foreach ($_POST as $key => $value) {
+    if (is_string($value)) {
+        $_POST[$key] = trim($value);
+    }
+}
 
 switch ($accion) {
     case 'listarPersonal':
@@ -49,6 +56,7 @@ switch ($accion) {
     case 'obtenerPersonal':
         $id = $_POST['id_personal'];
         try {
+            // Selecciona todos los campos para el formulario de edición
             $stmt = $pdo->prepare("SELECT * FROM personal WHERE id_personal = ?");
             $stmt->execute([$id]);
             $personal = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -62,18 +70,20 @@ switch ($accion) {
         try {
             $catalogos = [];
             $catalogos['genero'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_genero")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['estado_civil'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_estado_civil")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['estadocivil'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_estado_civil")->fetchAll(PDO::FETCH_ASSOC);
             $catalogos['estatus'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_estatus")->fetchAll(PDO::FETCH_ASSOC);
             $catalogos['especialidad'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_especialidad")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['estudio'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_estudio")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['vivienda'] = $pdo->query("SELECT codigo_vivienda AS codigo, descripcion FROM catalogo_vivienda")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['tipo_licencia'] = $pdo->query("SELECT codigo_tipo_licencia AS codigo, descripcion FROM catalogo_tipo_licencia")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['afp'] = $pdo->query("SELECT codigo_afp AS codigo, descripcion FROM catalogo_afp")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['cargo'] = $pdo->query("SELECT codigo_cargo AS codigo, descripcion FROM catalogo_cargo")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['ruta'] = $pdo->query("SELECT codigo_ruta AS codigo, descripcion FROM catalogo_ruta")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['departamento'] = $pdo->query("SELECT codigo_departamento AS codigo, descripcion FROM catalogo_departamento")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['municipio'] = $pdo->query("SELECT codigo_municipio AS codigo, descripcion FROM catalogo_municipio")->fetchAll(PDO::FETCH_ASSOC);
-            $catalogos['zona_residencia'] = $pdo->query("SELECT codigo_zona_residencia AS codigo, descripcion FROM catalogo_zona_residencia")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['estudio'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_estudios")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['vivienda'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_vivienda")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['tipolicencia'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_tipo_licencia")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['afp'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_afp")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['cargo'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_cargo")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['departamento'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_departamentos")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['municipio'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_municipios")->fetchAll(PDO::FETCH_ASSOC);
+            $catalogos['zonaresidencia'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_zona_residencia")->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Reviso las tablas, algunos select tienen nombres diferentes
+            $catalogos['distrito'] = $pdo->query("SELECT codigo AS codigo, descripcion FROM catalogo_distritos")->fetchAll(PDO::FETCH_ASSOC);
 
             echo json_encode(['respuesta' => true, 'catalogos' => $catalogos]);
         } catch (PDOException $e) {
@@ -131,7 +141,32 @@ switch ($accion) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al eliminar el registro.']);
         }
         break;
-        
+    case 'obtenerMunicipios':
+        $codigo_departamento = $_POST['codigo_departamento'] ?? '';
+        try {
+            $sql = "SELECT codigo, descripcion FROM catalogo_municipios WHERE codigo_departamento = ? ORDER BY descripcion";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$codigo_departamento]);
+            $municipios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['respuesta' => true, 'municipios' => $municipios]);
+        } catch (PDOException $e) {
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener municipios.']);
+        }
+        break;
+
+    case 'obtenerDistritos':
+        $codigo_municipio = $_POST['codigo_municipio'] ?? '';
+        $codigo_departamento = $_POST['codigo_departamento'] ?? '';
+        try {
+            $sql = "SELECT codigo, descripcion FROM catalogo_distritos WHERE codigo_municipio = ?, codigo_departamento ORDER BY descripcion";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$codigo_municipio, $codigo_departamento]);
+            $distritos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['respuesta' => true, 'distritos' => $distritos]);
+        } catch (PDOException $e) {
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener distritos.']);
+        }
+        break;        
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;
