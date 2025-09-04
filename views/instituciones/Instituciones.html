@@ -40,6 +40,9 @@
                 <form id="institucionForm">
                     <input type="hidden" id="codigo_institucion" name="codigo_institucion">
                     <input type="hidden" name="accion" value="crearActualizar">
+                    <input type="hidden" id="logo_uno_actual" name="logo_uno_actual"> {# Para guardar el nombre del logo actual al editar #}
+                    <input type="hidden" id="logo_dos_actual" name="logo_dos_actual"> {# Para guardar el nombre del logo actual al editar #}
+
 
                     <div class="row">
                         <div class="col-md-6 mb-3"><label>Nombre Institución</label><input type="text" class="form-control" name="nombre_institucion" id="nombre_institucion" required></div>
@@ -72,6 +75,22 @@
                             </select>
                         </div>
                         <div class="col-md-6 mb-3"><label>Nombre Corto</label><input type="text" class="form-control" name="nombre_corto" id="nombre_corto"></div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6 mb-3">
+                            <label for="logo_uno_file" class="form-label">Logo Principal</label>
+                            <input class="form-control" type="file" id="logo_uno_file" name="logo_uno_file" accept="image/png, image/jpeg, image/jpg">
+                            <div class="mt-2" id="preview_logo_uno">
+                                {# Aquí se mostrará una vista previa del logo actual #}
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="logo_dos_file" class="form-label">Logo Secundario</label>
+                            <input class="form-control" type="file" id="logo_dos_file" name="logo_dos_file" accept="image/png, image/jpeg, image/jpg">
+                            <div class="mt-2" id="preview_logo_dos">
+                                {# Aquí se mostrará una vista previa del logo actual #}
+                            </div>
+                        </div>
                     </div>
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar</button>

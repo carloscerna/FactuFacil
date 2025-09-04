@@ -9,18 +9,19 @@ if (empty($_SESSION['userNombre'])) {
     echo json_encode(['respuesta' => false, 'mensaje' => 'Sesión no válida.']);
     exit();
 }
-// ruta de los archivos con su carpeta
+
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 include($path_root."/FactuFacil/includes/mainFunctions_.php");
 $pdo = $dblink;
 $accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
 
-// Recortar espacios en blanco para todos los datos del formulario
 foreach ($_POST as $key => $value) {
     if (is_string($value)) {
         $_POST[$key] = trim($value);
     }
 }
+
+$base_upload_dir = $path_root . "/FactuFacil/img/";
 
 switch ($accion) {
     case 'listarInstituciones':
@@ -53,31 +54,87 @@ switch ($accion) {
         $nombre_corto = $_POST['nombre_corto'];
         $nit = $_POST['nit'];
         $nrc = $_POST['nrc'];
-        $nrc_vigente = $_POST['nrc_vigente'] ?? false; // Valor por defecto
+        $nrc_vigente = ($_POST['nrc_vigente'] === 'true') ? true : false;
         $telefono = $_POST['telefono'];
         $correo_electronico = $_POST['correo_electronico'];
         $direccion = $_POST['direccion'];
         $representante_legal = $_POST['representante_legal'];
-        $estado_actividad = $_POST['estado_actividad'] ?? true; // Valor por defecto
-        $logo_uno = $_POST['logo_uno'] ?? '';
-        $logo_dos = $_POST['logo_dos'] ?? '';
+        $estado_actividad = ($_POST['estado_actividad'] === 'true') ? true : false;
+        
+        $logo_uno_nombre_db = $_POST['logo_uno_actual'] ?? null;
+        $logo_dos_nombre_db = $_POST['logo_dos_actual'] ?? null;
 
         try {
+            $pdo->beginTransaction();
+
             if (empty($codigo_institucion)) {
-                // Generar código para la nueva institución
                 $nuevo_codigo = generarCodigoInstitucion($pdo);
+                if (!$nuevo_codigo) {
+                    throw new Exception("No se pudo generar el código de institución.");
+                }
+                $codigo_institucion = $nuevo_codigo;
+
+                $institucion_upload_dir = $base_upload_dir . $codigo_institucion . "/";
+                if (!is_dir($institucion_upload_dir)) {
+                    mkdir($institucion_upload_dir, 0777, true);
+                }
+            } else {
+                $institucion_upload_dir = $base_upload_dir . $codigo_institucion . "/";
+                if (!is_dir($institucion_upload_dir)) {
+                    mkdir($institucion_upload_dir, 0777, true);
+                }
+            }
+
+            if (isset($_FILES['logo_uno_file']) && $_FILES['logo_uno_file']['error'] === UPLOAD_ERR_OK) {
+                $file_tmp_name = $_FILES['logo_uno_file']['tmp_name'];
+                $file_name = uniqid('logo1_') . "." . pathinfo($_FILES['logo_uno_file']['name'], PATHINFO_EXTENSION);
+                $destination = $institucion_upload_dir . $file_name;
+
+                if (move_uploaded_file($file_tmp_name, $destination)) {
+                    if ($logo_uno_nombre_db && $logo_uno_nombre_db !== $file_name && file_exists($institucion_upload_dir . $logo_uno_nombre_db)) {
+                        unlink($institucion_upload_dir . $logo_uno_nombre_db);
+                    }
+                    $logo_uno_nombre_db = $file_name;
+                } else {
+                    throw new Exception("Error al subir el Logo Principal.");
+                }
+            }
+
+            if (isset($_FILES['logo_dos_file']) && $_FILES['logo_dos_file']['error'] === UPLOAD_ERR_OK) {
+                $file_tmp_name = $_FILES['logo_dos_file']['tmp_name'];
+                $file_name = uniqid('logo2_') . "." . pathinfo($_FILES['logo_dos_file']['name'], PATHINFO_EXTENSION);
+                $destination = $institucion_upload_dir . $file_name;
+
+                if (move_uploaded_file($file_tmp_name, $destination)) {
+                    if ($logo_dos_nombre_db && $logo_dos_nombre_db !== $file_name && file_exists($institucion_upload_dir . $logo_dos_nombre_db)) {
+                        unlink($institucion_upload_dir . $logo_dos_nombre_db);
+                    }
+                    $logo_dos_nombre_db = $file_name;
+                } else {
+                    throw new Exception("Error al subir el Logo Secundario.");
+                }
+            }
+
+            if (empty($_POST['codigo_institucion'])) {
                 $sql = "INSERT INTO instituciones (codigo_institucion, nombre_institucion, nombre_legal, nombre_corto, nit, nrc, nrc_vigente, telefono, correo_electronico, direccion, representante_legal, estado_actividad, logo_uno, logo_dos, fecha_registro) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$nuevo_codigo, $nombre_institucion, $nombre_legal, $nombre_corto, $nit, $nrc, $nrc_vigente, $telefono, $correo_electronico, $direccion, $representante_legal, $estado_actividad, $logo_uno, $logo_dos]);
+                $stmt->execute([$codigo_institucion, $nombre_institucion, $nombre_legal, $nombre_corto, $nit, $nrc, $nrc_vigente, $telefono, $correo_electronico, $direccion, $representante_legal, $estado_actividad, $logo_uno_nombre_db, $logo_dos_nombre_db]);
+                
+                $pdo->commit();
+                echo json_encode(['respuesta' => true, 'mensaje' => 'Institución creada exitosamente.', 'nuevo_codigo' => $codigo_institucion]);
+
             } else {
-                // Actualizar una institución existente
                 $sql = "UPDATE instituciones SET nombre_institucion = ?, nombre_legal = ?, nombre_corto = ?, nit = ?, nrc = ?, nrc_vigente = ?, telefono = ?, correo_electronico = ?, direccion = ?, representante_legal = ?, estado_actividad = ?, logo_uno = ?, logo_dos = ? WHERE codigo_institucion = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$nombre_institucion, $nombre_legal, $nombre_corto, $nit, $nrc, $nrc_vigente, $telefono, $correo_electronico, $direccion, $representante_legal, $estado_actividad, $logo_uno, $logo_dos, $codigo_institucion]);
+                $stmt->execute([$nombre_institucion, $nombre_legal, $nombre_corto, $nit, $nrc, $nrc_vigente, $telefono, $correo_electronico, $direccion, $representante_legal, $estado_actividad, $logo_uno_nombre_db, $logo_dos_nombre_db, $codigo_institucion]);
+                
+                $pdo->commit();
+                echo json_encode(['respuesta' => true, 'mensaje' => 'Institución guardada exitosamente.']);
             }
-            echo json_encode(['respuesta' => true, 'mensaje' => 'Institución guardada exitosamente.']);
-        } catch (PDOException $e) {
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log("Error al guardar institución: " . $e->getMessage());
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar la institución: ' . $e->getMessage()]);
         }
         break;
@@ -85,11 +142,32 @@ switch ($accion) {
     case 'eliminar':
         $codigo = $_POST['codigo_institucion'];
         try {
+            $pdo->beginTransaction();
+
+            $stmt_get_logos = $pdo->prepare("SELECT logo_uno, logo_dos FROM instituciones WHERE codigo_institucion = ?");
+            $stmt_get_logos->execute([$codigo]);
+            $logos = $stmt_get_logos->fetch(PDO::FETCH_ASSOC);
+
             $stmt = $pdo->prepare("DELETE FROM instituciones WHERE codigo_institucion = ?");
             $stmt->execute([$codigo]);
-            echo json_encode(['respuesta' => true, 'mensaje' => 'Institución eliminada exitosamente.']);
+
+            $institucion_dir = $base_upload_dir . $codigo . "/";
+            if (is_dir($institucion_dir)) {
+                if ($logos['logo_uno'] && file_exists($institucion_dir . $logos['logo_uno'])) {
+                    unlink($institucion_dir . $logos['logo_uno']);
+                }
+                if ($logos['logo_dos'] && file_exists($institucion_dir . $logos['logo_dos'])) {
+                    unlink($institucion_dir . $logos['logo_dos']);
+                }
+                rmdir($institucion_dir);
+            }
+
+            $pdo->commit();
+            echo json_encode(['respuesta' => true, 'mensaje' => 'Institución eliminada exitosamente y archivos asociados.']);
         } catch (PDOException $e) {
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al eliminar la institución.']);
+            $pdo->rollBack();
+            error_log("Error al eliminar institución: " . $e->getMessage());
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al eliminar la institución: ' . $e->getMessage()]);
         }
         break;
         
