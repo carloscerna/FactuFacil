@@ -36,152 +36,133 @@ if ($errorDbConexion === false && isset($dblink)) {
 
         switch ($accion) {
             case 'BuscarUser':
-                // Validar y sanear los datos de entrada.
-                // filter_input es preferible a acceder directamente a $_POST
-                $nombre = filter_input(INPUT_POST, 'txtnombre', FILTER_SANITIZE_STRING);
-                $password_ingresado = filter_input(INPUT_POST, 'txtpassword', FILTER_UNSAFE_RAW); // No sanear password antes de verificar hash
-
-                if (empty($nombre) || empty($password_ingresado)) {
-                    $mensajeError = 'Usuario y/o Contraseña no pueden estar vacíos.';
-                    break;
-                }
-
-                // USO DE PREPARED STATEMENTS PARA PREVENIR INYECCIÓN SQL
-                $query = "SELECT u.nombre, u.id_usuario, u.base_de_datos, u.codigo_escuela, u.codigo_perfil, u.codigo_personal,
-                                 btrim(p.nombres || CAST(' ' AS VARCHAR) || p.apellidos) as nombre_personal,
-                                 cat_perfil.descripcion as nombre_perfil, u.password as hashed_password
-                          FROM usuarios u
-                          INNER JOIN personal p ON p.id_personal = u.codigo_personal
-                          INNER JOIN catalogo_perfil cat_perfil ON cat_perfil.codigo = u.codigo_perfil
-                          WHERE u.nombre = :nombre LIMIT 1";
-
-                try {
-                    $stmt = $dblink->prepare($query);
-					$nombre = trim($nombre); // Asegurarse de que el nombre esté limpio y sin espacios innecesarios
-                    $stmt->bindParam(':nombre', $nombre, PDO::PARAM_STR);
+            $user = $_POST['txtnombre'] ?? '';
+            $password = $_POST['txtpassword'] ?? '';
+            
+            try {
+                // Lógica para el usuario "root"
+                if ($user === 'root') {
+                    $sql = "
+                        SELECT
+                            u.id_usuario,
+                            u.nombre AS nombre_usuario,
+                            u.password
+                        FROM
+                            usuarios u
+                        WHERE
+                            u.nombre = :user AND u.estado = true
+                    ";
+                    $stmt = $dblink->prepare($sql);
+                    $stmt->bindParam(':user', $user, PDO::PARAM_STR);
                     $stmt->execute();
-                    $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
+                    $login = $stmt->fetch(PDO::FETCH_ASSOC);
 
-                    if ($usuario) {
-						// Dentro del if ($usuario) en phpAjaxLogin.inc.php, justo antes del password_verify
-					//var_dump("Password Ingresado (texto plano): '" . $password_ingresado . "' (Longitud: " . strlen($password_ingresado) . ")");
-					//var_dump("Hash desde DB: '" . $usuario['hashed_password'] . "' (Longitud: " . strlen($usuario['hashed_password']) . ")");
-					//var_dump("Resultado de password_verify: " . (password_verify($password_ingresado, $usuario['hashed_password']) ? 'TRUE' : 'FALSE'));
-						// Si no ves los logs de error, puedes probar con var_dump directamente en la respuesta AJAX (recuerda comentar el header y poner exit())
+                    if ($login && password_verify($password, trim($login['password']))) {
+                        // Si el usuario "root" existe, buscamos su perfil.
+                        $sql_perfil = "
+                            SELECT
+                                up.codigo_perfil,
+                                cp.descripcion AS nombre_perfil
+                            FROM
+                                personal up
+                            INNER JOIN
+                                catalogo_perfil cp ON up.codigo_perfil = cp.codigo
+                            WHERE
+                                up.id_usuario = :id_usuario
+                        ";
+                        $stmt_perfil = $dblink->prepare($sql_perfil);
+                        $stmt_perfil->bindParam(':id_usuario', $login['id_usuario'], PDO::PARAM_INT);
+                        $stmt_perfil->execute();
+                        $perfil = $stmt_perfil->fetch(PDO::FETCH_ASSOC);
 
-                        // VERIFICACIÓN DE CONTRASEÑA HASHED (MUY IMPORTANTE)
-                        // Asumiendo que u.password ahora almacena un hash de la contraseña.
-                        // Si no es así, DEBES migrar tus contraseñas a hashes.
-                   // *** SOLUCIÓN: Aplicar trim() al hash recuperado de la base de datos ***
-                    $stored_hash = trim($usuario['hashed_password']);
-                        if (password_verify($password_ingresado, $stored_hash)) {
-                            $respuestaOK = true;
-                            $contenidoOK = "Si";
-                            $mensajeError = "Conexión Exitosa.";
+                        // Asignamos las variables de sesión para el superusuario
+                        $_SESSION['userLogin'] = true;
+                        $_SESSION['userNombre'] = $login['nombre_usuario'];
+                        $_SESSION['userID'] = $login['id_usuario'];
+                        $_SESSION['codigo_perfil'] = $perfil['codigo_perfil'] ?? null;
+                        $_SESSION['nombre_perfil'] = $perfil['nombre'] ?? 'Administrador Maestro';
+                        $_SESSION['codigo_personal'] = null;
+                        $_SESSION['nombre_personal'] = 'Superusuario';
+                        $_SESSION['codigo_institucion'] = null;
+                        $_SESSION['institucion'] = 'Acceso Global';
+                        $_SESSION['logo_uno'] = 'logo_generico.png';
+                        $_SESSION['dbname'] = 'sistema_facturacion';
 
-                            // Establecer variables de sesión para el usuario
+                        $respuestaOK = true;
+                        $contenidoOK = 'Bienvenido al Sistema';
+                    } else {
+                        $respuestaOK = false;
+                        $contenidoOK = 'Error Usuario';
+                        $mensajeError = 'Usuario o Contraseña incorrecta.';
+                    }
+                } else {
+                    // Lógica para usuarios normales (requiere institución)
+                    $sql = "
+                        SELECT
+                            u.id_usuario,
+                            u.nombre AS nombre_usuario,
+                            u.password,
+                            up.codigo_perfil,
+                            p.nombres,
+                            p.apellidos,
+                            p.codigo_personal,
+                            i.codigo_institucion,
+                            i.nombre_institucion,
+                            i.logo_uno,
+                            cp.descripcion AS nombre_perfil
+                        FROM
+                            usuarios u
+                        INNER JOIN
+                            usuarios_personal up ON u.id_usuario = up.id_usuario_bigint
+                        INNER JOIN
+                            personal p ON up.id_usuario_bigint = p.id_usuario_bigint
+                        INNER JOIN
+                            instituciones i ON p.codigo_institucion = i.codigo_institucion
+                        INNER JOIN
+                            catalogo_perfil cp ON up.codigo_perfil = cp.codigo_perfil
+                        WHERE
+                            u.nombre = :user
+                            AND u.estado = true
+                            AND p.codigo_estatus = '01'
+                    ";
+                    $stmt = $dblink->prepare($sql);
+                    $stmt->bindParam(':user', $user, PDO::PARAM_STR);
+                    $stmt->execute();
+                    $login = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    if ($login) {
+                        if (password_verify($password, $login['password'])) {
+                            // Autenticación exitosa, asignamos las variables de sesión
                             $_SESSION['userLogin'] = true;
-                            $_SESSION['userNombre'] = trim($usuario['nombre']);
-                            $_SESSION['userID'] = $usuario['id_usuario'];
-                            $_SESSION['dbname'] = trim($usuario['base_de_datos']); // La BD puede cambiar por usuario
-                            $_SESSION['codigo_escuela'] = trim($usuario['codigo_escuela']);
-                            $_SESSION['codigo_perfil'] = trim($usuario['codigo_perfil']);
-                            $_SESSION['codigo_personal'] = trim($usuario['codigo_personal']);
-                            $_SESSION['nombre_personal'] = trim($usuario['nombre_personal']);
-                            $_SESSION['nombre_perfil'] = trim($usuario['nombre_perfil']);
-                            $_SESSION['autentica'] = "SI"; // Variable de autenticación
-
-                            // ***** IMPORTANTE: Reestablecer la conexión a la nueva base de datos del usuario si 'dbname' ha cambiado *****
-                            // Esta es la parte crítica donde el código original hacía una segunda inclusión de mainFunctions_.php
-                            // Una mejor práctica sería tener una función de conexión reusable.
-                            // Para mantener la lógica original de reconexión, podríamos hacer esto:
-                            if (isset($_SESSION['dbname'])) {//&& $_SESSION['dbname'] !== $database) { // Si la BD del usuario es diferente a la de la conexión actual
-                                // Una forma de reconectar:
-                                // Asume que mainFunctions_.php puede ser incluido de nuevo para reestablecer $dblink con la nueva $_SESSION['dbname']
-                                // O, mejor aún, crea una función de conexión reutilizable.
-                                // Por simplicidad, re-incluimos, pero idealmente se usaría una función.
-                                // La variable $database en mainFunctions_.php se actualizará con $_SESSION['dbname']
-                                include($path_root . "/FactuFacil/includes/mainFunctions_.php");
-                                if ($errorDbConexion) {
-                                    $respuestaOK = false;
-                                    $contenidoOK = "Error dbname";
-                                    $mensajeError = "No se pudo conectar a la base de datos de la institución.";
-                                    break;
-                                }
-                            }
-							//print $_SESSION['dbname'] ?? 'No database name set in session.';
-                            // Obtener datos de la institución DESPUÉS de asegurar la conexión a la BD correcta
-                            if ($dblink) { // Asegúrate de que $dblink esté válido después de la posible reconexión
-                                $query_institucion = "SELECT inf.id_, inf.codigo_departamento, inf.codigo_municipio, inf.codigo_institucion, inf.nombre_institucion, inf.direccion_institucion, inf.telefono_uno,
-                                                        depa.codigo, depa.descripcion as nombre_departamento,
-                                                        mu.codigo, mu.codigo_departamento, mu.descripcion as nombre_municipio, inf.numero_acuerdo,
-                                                        btrim(p.nombres || CAST(' ' AS VARCHAR) || p.apellidos) as nombre_completo,
-                                                        inf.se_extiende_la_presente, inf.dia_entrega, inf.logo_uno, inf.logo_dos, inf.imagen_firma, inf.imagen_sello
-                                                    FROM instituciones inf
-                                                    INNER JOIN personal p ON p.id_personal = CAST(inf.nombre_director AS INTEGER)
-                                                    INNER JOIN catalogo_departamentos depa ON depa.codigo = inf.codigo_departamento
-                                                    INNER JOIN catalogo_municipios mu ON mu.codigo = inf.codigo_municipio AND mu.codigo_departamento = inf.codigo_departamento	
-                                                    WHERE inf.codigo_institucion = :codigo_institucion LIMIT 1";
-
-                                $stmt_institucion = $dblink->prepare($query_institucion);
-                                $stmt_institucion->bindParam(':codigo_institucion', $_SESSION['codigo_escuela'], PDO::PARAM_STR);
-                                $stmt_institucion->execute();
-                                $institucionData = $stmt_institucion->fetch(PDO::FETCH_ASSOC);
-
-                                if ($institucionData) {
-                                    $_SESSION['institucion'] = trim($institucionData['nombre_institucion']);
-                                    $_SESSION['direccion'] = trim($institucionData['direccion_institucion']);
-                                    $_SESSION['codigo'] = trim($institucionData['codigo_institucion']);
-                                    $_SESSION['telefono'] = trim($institucionData['telefono_uno']);
-                                    $_SESSION['codigo_municipio'] = trim($institucionData['codigo_municipio']);
-                                    $_SESSION['nombre_municipio'] = convertirtexto(trim($institucionData['nombre_municipio']));
-                                    $_SESSION['codigo_departamento'] = trim($institucionData['codigo_departamento']);
-                                    $_SESSION['nombre_departamento'] = convertirtexto(trim($institucionData['nombre_departamento']));
-                                    $_SESSION['nombre_director'] = trim($institucionData['nombre_completo']);
-                                    $_SESSION['numero_acuerdo'] = trim($institucionData['numero_acuerdo']);
-                                    $_SESSION['se_extiende'] = trim($institucionData['se_extiende_la_presente']);
-                                    $_SESSION['dia_entrega'] = convertirtexto(trim($institucionData['dia_entrega']));
-                                    $_SESSION['logo_uno'] = trim($institucionData['logo_uno']);
-                                    $_SESSION['logo_dos'] = trim($institucionData['logo_dos']);
-                                    $_SESSION['imagen_firma'] = trim($institucionData['imagen_firma']);
-                                    $_SESSION['imagen_sello'] = trim($institucionData['imagen_sello']);
-                                    $_SESSION['codigo_institucion'] = trim($institucionData['codigo_institucion']);
-
-                                    // Variables para la Matrícula (manteniendo lógica original)
-                                    $_SESSION["s_codigo_ann_lectivo"] = "01";
-                                    $_SESSION["s_codigo_modalidad"] = "01";
-                                    $_SESSION["s_codigo_grado_seccion_turno"] = "01";
-
-                                } else {
-                                    $respuestaOK = false;
-                                    $contenidoOK = "Error Institucion";
-                                    $mensajeError = "No existen datos de la institución para el código de escuela.";
-                                    // Limpiar sesión si la institución no se encuentra
-                                    session_destroy();
-                                }
-                            } else {
-                                $respuestaOK = false;
-                                $contenidoOK = "Error dbname";
-                                $mensajeError = "No se pudo establecer la conexión a la base de datos de la institución.";
-                                session_destroy();
-                            }
+                            $_SESSION['userNombre'] = $login['nombre_usuario'];
+                            $_SESSION['userID'] = $login['id_usuario'];
+                            $_SESSION['codigo_perfil'] = trim($login['codigo_perfil']);
+                            $_SESSION['codigo_personal'] = trim($login['codigo_personal']);
+                            $_SESSION['nombre_personal'] = trim($login['nombres'] . ' ' . $login['apellidos']);
+                            $_SESSION['nombre_perfil'] = $login['nombre_perfil'];
+                            $_SESSION['codigo_institucion'] = trim($login['codigo_institucion']);
+                            $_SESSION['institucion'] = $login['nombre_institucion'];
+                            $_SESSION['logo_uno'] = $login['logo_uno'];
+                            $respuestaOK = true;
+                            $contenidoOK = 'Bienvenido al Sistema';
                         } else {
                             $respuestaOK = false;
                             $contenidoOK = 'Error Usuario';
-                            $mensajeError = 'Usuario o Contraseña incorrecta.'; // Mensaje genérico por seguridad
+                            $mensajeError = 'Usuario o Contraseña incorrecta.';
                         }
                     } else {
                         $respuestaOK = false;
                         $contenidoOK = 'Error Usuario';
-                        $mensajeError = 'Usuario o Contraseña incorrecta.'; // Mensaje genérico
+                        $mensajeError = 'Usuario o Contraseña incorrecta.';
                     }
-                } catch (PDOException $e) {
-                    $respuestaOK = false;
-                    $contenidoOK = 'Error Interno';
-                    $mensajeError = 'Error en la consulta de base de datos durante el login.';
-                    // En producción, aquí se registraría $e->getMessage() en un log, no al usuario.
                 }
-                break;
+            } catch (PDOException $e) {
+                $respuestaOK = false;
+                $contenidoOK = 'Error Interno';
+                $mensajeError = 'Error en la consulta de base de datos durante el login.';
+            }
+            break;
+                
 
             default:
                 $mensajeError = 'Esta acción no se encuentra disponible.';

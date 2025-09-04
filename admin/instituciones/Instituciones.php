@@ -1,0 +1,81 @@
+{# views/instituciones/Instituciones.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center rounded-top-3">
+            <h2 class="mb-0">Gestión de Instituciones</h2>
+            <button class="btn btn-light" id="btnNuevaInstitucion" type="button" data-bs-toggle="modal" data-bs-target="#institucionModal">
+                <i class="fas fa-plus-circle me-2"></i> Nueva Institución
+            </button>
+        </div>
+        <div class="card-body p-4">
+            <table id="tablaInstituciones" class="table table-striped table-hover table-bordered">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>NIT</th>
+                        <th>NRC</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="institucionModal" tabindex="-1" aria-labelledby="institucionModalLabel">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content rounded-4 shadow-lg">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title" id="institucionModalLabel">Formulario de Institución</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="institucionForm">
+                    <input type="hidden" id="codigo_institucion" name="codigo_institucion">
+                    <input type="hidden" name="accion" value="crearActualizar">
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label>Nombre Institución</label><input type="text" class="form-control" name="nombre_institucion" id="nombre_institucion" required></div>
+                        <div class="col-md-6 mb-3"><label>Nombre Legal</label><input type="text" class="form-control" name="nombre_legal" id="nombre_legal" required></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3"><label>NIT</label><input type="text" class="form-control" name="nit" id="nit"></div>
+                        <div class="col-md-4 mb-3"><label>NRC</label><input type="text" class="form-control" name="nrc" id="nrc"></div>
+                        <div class="col-md-4 mb-3">
+                            <label>NRC Vigente</label>
+                            <select class="form-select" name="nrc_vigente" id="nrc_vigente">
+                                <option value="1">Sí</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3"><label>Teléfono</label><input type="text" class="form-control" name="telefono" id="telefono"></div>
+                        <div class="col-md-8 mb-3"><label>Dirección</label><input type="text" class="form-control" name="direccion" id="direccion"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label>Representante Legal</label><input type="text" class="form-control" name="representante_legal" id="representante_legal"></div>
+                        <div class="col-md-6 mb-3"><label>Correo Electrónico</label><input type="email" class="form-control" name="correo_electronico" id="correo_electronico"></div>
+                    </div>
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
+<script src="./js/instituciones/Instituciones.js"></script>
+{% endblock %}
