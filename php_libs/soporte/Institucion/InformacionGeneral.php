@@ -6,7 +6,7 @@
 // ruta de los archivos con su carpeta
     $path_root=trim($_SERVER['DOCUMENT_ROOT']);
 // Incluimos el archivo de funciones y conexin a la base de datos
-    include($path_root."/registro_academico/includes/mainFunctions_conexion.php");
+    include($path_root."/FactuFacil/includes/mainFunctions_conexion.php");
 // Indicamos que la respuesta es de tipo JSON (excepto en listar, pero la convertiremos a JSON también)
     header('Content-Type: application/json; charset=utf-8');
 // Verificamos que se haya enviado el parámetro action
@@ -63,7 +63,7 @@ switch ($action) {
         // Obtener la ruta física raíz
         $path_root = trim($_SERVER['DOCUMENT_ROOT']);  // Ejemplo: "C:/wamp64/www"
         // Define la carpeta dentro de tu proyecto donde deseas guardar las imágenes
-        $uploadDir = "/registro_academico/img/"; // Asegúrate de incluir la barra inicial
+        $uploadDir = "/FactuFacil/img/"; // Asegúrate de incluir la barra inicial
         // Ruta completa donde guardar la imagen
         $destino = $path_root . $uploadDir;
 
@@ -211,7 +211,7 @@ switch ($action) {
             // Construir la URL base para las imágenes
             $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
             $host = $_SERVER['HTTP_HOST'];
-            $baseWebPath = $protocol . $host . "/registro_academico/img/"; // Ruta base a la raíz de tu proyecto
+            $baseWebPath = $protocol . $host . "/FactuFacil/img/"; // Ruta base a la raíz de tu proyecto
 
             if ($data) {
                 // Ajustar las rutas de las imágenes para que sean URLs completas para el frontend

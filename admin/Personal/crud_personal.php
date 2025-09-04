@@ -110,20 +110,23 @@ switch ($accion) {
         $direccion = $_POST['direccion'];
         $codigo_estatus = $_POST['codigo_estatus'];
         $codigo_cargo = $_POST['codigo_cargo'];
+        $codigo_departamento = $_POST['codigo_departamento'];
+        $codigo_municipio = $_POST['codigo_municipio'];
+        $codigo_distrito = $_POST['codigo_distrito'];
         // ... (resto de los campos del formulario) ...
         
         try {
             if (empty($id_personal)) {
                 // Crear un nuevo registro
-                $sql = "INSERT INTO personal (nombres, apellidos, dui, nit, isss, fecha_nacimiento, fecha_ingreso, salario, pago_diario, codigo_genero, codigo_estado_civil, telefono_celular, correo_electronico, direccion, codigo_estatus, codigo_cargo) 
+                $sql = "INSERT INTO personal (nombres, apellidos, dui, nit, isss, fecha_nacimiento, fecha_ingreso, salario, pago_diario, codigo_genero, codigo_estado_civil, telefono_celular, correo_electronico, direccion, codigo_estatus, codigo_cargo, codigo_departamento, codigo_municipio, codigo_distrito) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo]);
+                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $codigo_departamento, $codigo_municipio, $codigo_distrito]);
             } else {
                 // Actualizar un registro existente
-                $sql = "UPDATE personal SET nombres = ?, apellidos = ?, dui = ?, nit = ?, isss = ?, fecha_nacimiento = ?, fecha_ingreso = ?, salario = ?, pago_diario = ?, codigo_genero = ?, codigo_estado_civil = ?, telefono_celular = ?, correo_electronico = ?, direccion = ?, codigo_estatus = ?, codigo_cargo = ? WHERE id_personal = ?";
+                $sql = "UPDATE personal SET nombres = ?, apellidos = ?, dui = ?, nit = ?, isss = ?, fecha_nacimiento = ?, fecha_ingreso = ?, salario = ?, pago_diario = ?, codigo_genero = ?, codigo_estado_civil = ?, telefono_celular = ?, correo_electronico = ?, direccion = ?, codigo_estatus = ?, codigo_cargo = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ? WHERE id_personal = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $id_personal]);
+                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $codigo_departamento, $codigo_municipio, $codigo_distrito, $id_personal]);
             }
             echo json_encode(['respuesta' => true, 'mensaje' => 'Registro de personal guardado exitosamente.']);
         } catch (PDOException $e) {
@@ -158,7 +161,7 @@ switch ($accion) {
         $codigo_municipio = $_POST['codigo_municipio'] ?? '';
         $codigo_departamento = $_POST['codigo_departamento'] ?? '';
         try {
-            $sql = "SELECT codigo, descripcion FROM catalogo_distritos WHERE codigo_municipio = ? AND codigo_departamento = ? ORDER BY descripcion";
+            $sql = "SELECT TRIM(codigo) AS codigo, descripcion FROM catalogo_distritos WHERE codigo_municipio = ? AND codigo_departamento = ? ORDER BY descripcion";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$codigo_municipio, $codigo_departamento]);
             $distritos = $stmt->fetchAll(PDO::FETCH_ASSOC);

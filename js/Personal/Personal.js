@@ -140,38 +140,64 @@ $('#selectMunicipio').on('change', function() {
     }
 });
     // Evento para el botón "Editar"
-    $('#tablaPersonal tbody').on('click', '.btnEditar', function () {
-        let fila = $(this).closest("tr");
-        let id_personal = parseInt(fila.find('td:eq(0)').text());
-        $('#personalModalLabel').text('Editar Registro');
-        $('#id_personal').val(id_personal);
+$('#tablaPersonal tbody').on('click', '.btnEditar', function () {
+    let fila = $(this).closest("tr");
+    let id_personal = parseInt(fila.find('td:eq(0)').text());
+    $('#personalModalLabel').text('Editar Registro');
+    $('#id_personal').val(id_personal);
 
-        cargarCatalogos().done(function(response) {
-            if (response.respuesta) {
-                $.ajax({
-                    url: "admin/personal/crud_personal.php",
-                    type: "POST",
-                    dataType: "json",
-                    data: { accion: 'obtenerPersonal', id_personal: id_personal },
-                    success: function(response) {
-                        if (response.respuesta) {
-                            let personal = response.personal;
+    // 1. Cargar todos los catálogos principales y luego obtener los datos del personal
+    cargarCatalogos().done(function() {
+        $.ajax({
+            url: "admin/personal/crud_personal.php",
+            type: "POST",
+            dataType: "json",
+            data: { accion: 'obtenerPersonal', id_personal: id_personal },
+            success: function(response_personal) {
+                if (response_personal.respuesta) {
+                    let personal = response_personal.personal;
 
-                            // Recorrer el objeto 'personal' y recortar los espacios en blanco
-                                    for (const key in personal) {
-                                        if (personal.hasOwnProperty(key) && typeof personal[key] === 'string') {
-                                            personal[key] = personal[key].trim();
-                                        }
-                                    }
-                            // Lógica para rellenar los selects geográficos
-                            $('#selectDepartamento').val(personal.codigo_departamento);
-                            
-                            // Limpiar y llenar el select de municipios
+                    // Limpiar y rellenar los campos de texto
+                    for (const key in personal) {
+                        if (personal.hasOwnProperty(key) && typeof personal[key] === 'string') {
+                            personal[key] = personal[key].trim();
+                        }
+                    }
+
+                    $('#nombres').val(personal.nombres);
+                    $('#apellidos').val(personal.apellidos);
+                    $('#dui').val(personal.dui);
+                    $('#nit').val(personal.nit);
+                    $('#isss').val(personal.isss);
+                    $('#fecha_nacimiento').val(personal.fecha_nacimiento);
+                    $('#fecha_ingreso').val(personal.fecha_ingreso);
+                    $('#salario').val(personal.salario);
+                    $('#pago_diario').val(personal.pago_diario);
+                    $('#telefono_celular').val(personal.telefono_celular);
+                    $('#correo_electronico').val(personal.correo_electronico);
+                    $('#direccion').val(personal.direccion);
+                    
+                    // Poblar los SELECTs
+                    $('#selectGenero').val(personal.codigo_genero);
+                    $('#selectEstadocivil').val(personal.codigo_estado_civil);
+                    $('#selectEstatus').val(personal.codigo_estatus);
+                    $('#selectCargo').val(personal.codigo_cargo);
+                    $('#selectDepartamento').val(personal.codigo_departamento);
+
+                    // 3. Cargar los Municipios del Departamento seleccionado
+                    $.ajax({
+                        url: "admin/personal/crud_personal.php",
+                        type: "POST",
+                        dataType: "json",
+                        data: { accion: 'obtenerMunicipios', codigo_departamento: personal.codigo_departamento },
+                        success: function(response_municipios) {
+                            if (response_municipios.respuesta) {
+                                // Limpiar y llenar el select de municipios
                                 $('#selectMunicipio').empty().append('<option value="">Seleccione...</option>');
                                 $.each(response_municipios.municipios, function(key, item) {
                                     $('#selectMunicipio').append(`<option value="${item.codigo}">${item.descripcion}</option>`);
                                 });
-                                // 4. Seleccionar el Municipio
+                                // 4. Seleccionar el Municipio y activar la carga de distritos
                                 $('#selectMunicipio').val(personal.codigo_municipio);
 
                                 // 5. Cargar los Distritos del Municipio seleccionado
@@ -179,7 +205,11 @@ $('#selectMunicipio').on('change', function() {
                                     url: "admin/personal/crud_personal.php",
                                     type: "POST",
                                     dataType: "json",
-                                    data: { accion: 'obtenerDistritos', codigo_municipio: personal.codigo_municipio },
+                                    data: { 
+                                        accion: 'obtenerDistritos', 
+                                        codigo_municipio: personal.codigo_municipio,
+                                        codigo_departamento: personal.codigo_departamento
+                                    },
                                     success: function(response_distritos) {
                                         if (response_distritos.respuesta) {
                                             // Limpiar y llenar el select de distritos
@@ -197,36 +227,18 @@ $('#selectMunicipio').on('change', function() {
                                         }
                                     }
                                 });
-
-                            $('#nombres').val(personal.nombres);
-                            $('#apellidos').val(personal.apellidos);
-                            $('#dui').val(personal.dui);
-                            $('#nit').val(personal.nit);
-                            $('#isss').val(personal.isss);
-                            $('#fecha_nacimiento').val(personal.fecha_nacimiento);
-                            $('#fecha_ingreso').val(personal.fecha_ingreso);
-                            $('#salario').val(personal.salario);
-                            $('#pago_diario').val(personal.pago_diario);
-                            $('#telefono_celular').val(personal.telefono_celular);
-                            $('#correo_electronico').val(personal.correo_electronico);
-                            $('#direccion').val(personal.direccion);
-                            
-                            // Poblar los SELECTs
-                            $('#selectGenero').val(personal.codigo_genero);
-                            $('#selectEstadocivil').val(personal.codigo_estado_civil);
-                            $('#selectEstatus').val(personal.codigo_estatus);
-                            $('#selectCargo').val(personal.codigo_cargo);
-                            // ... (resto de select) ...
-                            
-                            $('#personalModal').modal('show');
-                        } else {
-                            toastr.error(response.mensaje);
+                            } else {
+                                toastr.error('Error al cargar los municipios.');
+                            }
                         }
-                    }
-                });
+                    });
+                } else {
+                    toastr.error(response_personal.mensaje);
+                }
             }
         });
     });
+});
 
     // Evento para el formulario de creación/edición
     $('#personalForm').submit(function (e) {
