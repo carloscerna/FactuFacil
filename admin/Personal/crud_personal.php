@@ -22,6 +22,8 @@ foreach ($_POST as $key => $value) {
         $_POST[$key] = trim($value);
     }
 }
+// Obtener el código de la institución de la sesión
+$codigo_institucion_sesion = $_SESSION['codigo_institucion'];
 
 switch ($accion) {
     case 'listarPersonal':
@@ -42,10 +44,14 @@ switch ($accion) {
                     catalogo_cargo c_cargo ON p.codigo_cargo = c_cargo.codigo
                 LEFT JOIN 
                     catalogo_estatus c_estatus ON p.codigo_estatus = c_estatus.codigo
+                WHERE
+                    p.codigo_institucion = :codigo_institucion_sesion
                 ORDER BY 
                     p.apellidos, p.nombres
             ";
             $stmt = $pdo->query($sql);
+            $stmt->bindParam(':codigo_institucion_sesion', $codigo_institucion_sesion, PDO::PARAM_STR);
+            $stmt->execute();
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['data' => $data]);
         } catch (PDOException $e) {
@@ -56,9 +62,9 @@ switch ($accion) {
     case 'obtenerPersonal':
         $id = $_POST['id_personal'];
         try {
-            // Selecciona todos los campos para el formulario de edición
-            $stmt = $pdo->prepare("SELECT * FROM personal WHERE id_personal = ?");
-            $stmt->execute([$id]);
+            // Se agrega la condición WHERE para asegurar que solo se obtienen datos de la institución actual
+            $stmt = $pdo->prepare("SELECT * FROM personal WHERE id_personal = ? AND codigo_institucion = ?");
+            $stmt->execute([$id, $codigo_institucion_sesion]);
             $personal = $stmt->fetch(PDO::FETCH_ASSOC);
             echo json_encode(['respuesta' => true, 'personal' => $personal]);
         } catch (PDOException $e) {
@@ -113,20 +119,21 @@ switch ($accion) {
         $codigo_departamento = $_POST['codigo_departamento'];
         $codigo_municipio = $_POST['codigo_municipio'];
         $codigo_distrito = $_POST['codigo_distrito'];
+        $codigo_institucion = $_POST['codigo_institucion']; // Asignar el código de la institución de la sesión
         // ... (resto de los campos del formulario) ...
         
         try {
             if (empty($id_personal)) {
                 // Crear un nuevo registro
-                $sql = "INSERT INTO personal (nombres, apellidos, dui, nit, isss, fecha_nacimiento, fecha_ingreso, salario, pago_diario, codigo_genero, codigo_estado_civil, telefono_celular, correo_electronico, direccion, codigo_estatus, codigo_cargo, codigo_departamento, codigo_municipio, codigo_distrito) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO personal (nombres, apellidos, dui, nit, isss, fecha_nacimiento, fecha_ingreso, salario, pago_diario, codigo_genero, codigo_estado_civil, telefono_celular, correo_electronico, direccion, codigo_estatus, codigo_cargo, codigo_departamento, codigo_municipio, codigo_distrito, codigo_institucion) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $codigo_departamento, $codigo_municipio, $codigo_distrito]);
+                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $codigo_departamento, $codigo_municipio, $codigo_distrito, $codigo_institucion]);
             } else {
                 // Actualizar un registro existente
-                $sql = "UPDATE personal SET nombres = ?, apellidos = ?, dui = ?, nit = ?, isss = ?, fecha_nacimiento = ?, fecha_ingreso = ?, salario = ?, pago_diario = ?, codigo_genero = ?, codigo_estado_civil = ?, telefono_celular = ?, correo_electronico = ?, direccion = ?, codigo_estatus = ?, codigo_cargo = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ? WHERE id_personal = ?";
+                $sql = "UPDATE personal SET nombres = ?, apellidos = ?, dui = ?, nit = ?, isss = ?, fecha_nacimiento = ?, fecha_ingreso = ?, salario = ?, pago_diario = ?, codigo_genero = ?, codigo_estado_civil = ?, telefono_celular = ?, correo_electronico = ?, direccion = ?, codigo_estatus = ?, codigo_cargo = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, codigo_institucion = ? WHERE id_personal = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $codigo_departamento, $codigo_municipio, $codigo_distrito, $id_personal]);
+                $stmt->execute([$nombres, $apellidos, $dui, $nit, $isss, $fecha_nacimiento, $fecha_ingreso, $salario, $pago_diario, $codigo_genero, $codigo_estado_civil, $telefono_celular, $correo_electronico, $direccion, $codigo_estatus, $codigo_cargo, $codigo_departamento, $codigo_municipio, $codigo_distrito, $codigo_institucion, $id_personal]);
             }
             echo json_encode(['respuesta' => true, 'mensaje' => 'Registro de personal guardado exitosamente.']);
         } catch (PDOException $e) {
@@ -170,6 +177,16 @@ switch ($accion) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener distritos.']);
         }
         break;        
+ case 'obtenerInstituciones':
+        try {
+            $sql = "SELECT codigo_institucion, nombre_institucion FROM instituciones ORDER BY nombre_institucion";
+            $stmt = $pdo->query($sql);
+            $instituciones = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['respuesta' => true, 'instituciones' => $instituciones]);
+        } catch (PDOException $e) {
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener instituciones.']);
+        }
+        break;
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;

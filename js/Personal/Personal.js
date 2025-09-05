@@ -48,6 +48,27 @@ $(function () {
         });
     }
 
+ // Función para poblar el select de Instituciones
+function cargarInstituciones() {
+    return $.ajax({
+        url: "admin/personal/crud_personal.php",
+        type: "POST",
+        dataType: "json",
+        data: { accion: "obtenerInstituciones" },
+        success: function (response) {
+            if (response.respuesta) {
+                let select = $('#selectInstitucion');
+                select.empty().append('<option value="">Seleccione una institución</option>');
+                $.each(response.instituciones, function (key, item) {
+                    select.append(`<option value="${item.codigo_institucion}">${item.nombre_institucion}</option>`);
+                });
+            } else {
+                toastr.error("Error al cargar instituciones: " + response.mensaje);
+            }
+        }
+    });
+}
+
     // Aplicar las máscaras de entrada a los campos
     $('#dui').mask('00000000-0');
     $('#nit').mask('0000-000000-000-0');
@@ -62,6 +83,7 @@ $(function () {
         $('#personalForm')[0].reset();
         $('#id_personal').val('');
         cargarCatalogos();
+        cargarInstituciones();
         $('.form-control').removeClass('is-invalid is-valid');
     });
 // Función para poblar el select de Departamentos (se carga al inicio)

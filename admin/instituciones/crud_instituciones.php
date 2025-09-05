@@ -10,6 +10,9 @@ if (empty($_SESSION['userNombre'])) {
     exit();
 }
 
+$codigo_perfil_sesion = $_SESSION['codigo_perfil'] ?? '';
+$codigo_institucion_sesion = $_SESSION['codigo_institucion'] ?? '';
+
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 include($path_root."/FactuFacil/includes/mainFunctions_.php");
 $pdo = $dblink;
@@ -26,9 +29,14 @@ $base_upload_dir = $path_root . "/FactuFacil/img/";
 switch ($accion) {
     case 'listarInstituciones':
         try {
-            $sql = "SELECT codigo_institucion, nombre_institucion, nit, nrc, estado_actividad FROM instituciones ORDER BY nombre_institucion";
-            $stmt = $pdo->query($sql);
-            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($codigo_perfil_sesion === '99') { // Si es root, muestra todas las empresas
+                $sql = "SELECT codigo_institucion, nombre_institucion, nit, nrc, estado_actividad FROM instituciones ORDER BY nombre_institucion";
+                $stmt = $pdo->query($sql);
+            } else { // Si no es root, muestra solo la institución de la sesión
+                $sql = "SELECT codigo_institucion, nombre_institucion, nit, nrc, estado_actividad FROM instituciones WHERE codigo_institucion = ? ORDER BY nombre_institucion";
+                $stmt->execute([$codigo_institucion_sesion]);
+            }
+                $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['data' => $data]);
         } catch (PDOException $e) {
             echo json_encode(['data' => []]);
@@ -48,6 +56,10 @@ switch ($accion) {
         break;
 
     case 'crearActualizar':
+        if ($codigo_perfil_sesion !== '99') {
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Solo el superusuario puede crear instituciones.']);
+            exit();
+        }
         $codigo_institucion = $_POST['codigo_institucion'] ?? '';
         $nombre_institucion = $_POST['nombre_institucion']?? '';
         $nombre_legal = $_POST['nombre_legal'];
