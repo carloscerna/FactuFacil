@@ -49,17 +49,19 @@ switch ($accion) {
 
     case 'crearActualizar':
         $codigo_institucion = $_POST['codigo_institucion'] ?? '';
-        $nombre_institucion = $_POST['nombre_institucion'];
+        $nombre_institucion = $_POST['nombre_institucion']?? '';
         $nombre_legal = $_POST['nombre_legal'];
-        $nombre_corto = $_POST['nombre_corto'];
-        $nit = $_POST['nit'];
-        $nrc = $_POST['nrc'];
-        $nrc_vigente = ($_POST['nrc_vigente'] === 'true') ? true : false;
-        $telefono = $_POST['telefono'];
-        $correo_electronico = $_POST['correo_electronico'];
-        $direccion = $_POST['direccion'];
-        $representante_legal = $_POST['representante_legal'];
-        $estado_actividad = ($_POST['estado_actividad'] === 'true') ? true : false;
+        $nombre_corto = $_POST['nombre_corto']?? '';
+        $nit = $_POST['nit'] ?? '';
+        $nrc = $_POST['nrc'] ?? '';
+         // Convertir los valores de '1' y '0' a booleanos
+        $nrc_vigente = ($_POST['nrc_vigente']);
+        $estado_actividad = ($_POST['estado_actividad']);
+
+        $telefono = $_POST['telefono'] ?? '';
+        $correo_electronico = $_POST['correo_electronico'] ?? '';
+        $direccion = $_POST['direccion'] ?? '';
+        $representante_legal = $_POST['representante_legal'] ?? '';
         
         $logo_uno_nombre_db = $_POST['logo_uno_actual'] ?? null;
         $logo_dos_nombre_db = $_POST['logo_dos_actual'] ?? null;

@@ -86,12 +86,14 @@ $(function () {
                     $('#nombre_corto').val(institucion.nombre_corto);
                     $('#nit').val(institucion.nit);
                     $('#nrc').val(institucion.nrc);
-                    $('#nrc_vigente').val(institucion.nrc_vigente === 't' ? 'true' : 'false');
+                     // Asignar valores de los select booleanos
+                    $('#nrc_vigente').val(institucion.nrc_vigente === true ? '1' : '0');
+                    $('#estado_actividad').val(institucion.estado_actividad === true ? '1' : '0');
+
                     $('#telefono').val(institucion.telefono);
                     $('#direccion').val(institucion.direccion);
                     $('#representante_legal').val(institucion.representante_legal);
                     $('#correo_electronico').val(institucion.correo_electronico);
-                    $('#estado_actividad').val(institucion.estado_actividad === 't' ? 'true' : 'false');
 
                     // Guardar los nombres de logos actuales en campos ocultos
                     $('#logo_uno_actual').val(institucion.logo_uno || '');
