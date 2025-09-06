@@ -29,14 +29,16 @@ $base_upload_dir = $path_root . "/FactuFacil/img/";
 switch ($accion) {
     case 'listarInstituciones':
         try {
-            if ($codigo_perfil_sesion === '99') { // Si es root, muestra todas las empresas
+            if ($codigo_perfil_sesion === '99') {
                 $sql = "SELECT codigo_institucion, nombre_institucion, nit, nrc, estado_actividad FROM instituciones ORDER BY nombre_institucion";
                 $stmt = $pdo->query($sql);
-            } else { // Si no es root, muestra solo la institución de la sesión
-                $sql = "SELECT codigo_institucion, nombre_institucion, nit, nrc, estado_actividad FROM instituciones WHERE codigo_institucion = ? ORDER BY nombre_institucion";
-                $stmt->execute([$codigo_institucion_sesion]);
+            } else {
+                $sql = "SELECT codigo_institucion, nombre_institucion, nit, nrc, estado_actividad FROM instituciones WHERE codigo_institucion= :codigo_institucion ORDER BY nombre_institucion";
+                $stmt = $pdo->prepare($sql);
+                $stmt->bindParam(':codigo_institucion', $codigo_institucion_sesion, PDO::PARAM_STR);
+                $stmt->execute();
             }
-                $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['data' => $data]);
         } catch (PDOException $e) {
             echo json_encode(['data' => []]);
@@ -46,8 +48,16 @@ switch ($accion) {
     case 'obtenerInstitucion':
         $codigo = $_POST['codigo_institucion'];
         try {
-            $stmt = $pdo->prepare("SELECT * FROM instituciones WHERE codigo_institucion = ?");
-            $stmt->execute([$codigo]);
+            // Un usuario normal solo puede obtener datos de su propia institución
+            $sql = "SELECT * FROM instituciones WHERE codigo_institucion = ?";
+            if ($codigo_perfil_sesion !== '99') {
+                $sql .= " AND codigo_institucion = ?";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$codigo, $codigo_institucion_sesion]);
+            } else {
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute([$codigo]);
+            }
             $institucion = $stmt->fetch(PDO::FETCH_ASSOC);
             echo json_encode(['respuesta' => true, 'institucion' => $institucion]);
         } catch (PDOException $e) {
@@ -56,17 +66,30 @@ switch ($accion) {
         break;
 
     case 'crearActualizar':
-        if ($codigo_perfil_sesion !== '99') {
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Solo el superusuario puede crear instituciones.']);
-            exit();
-        }
         $codigo_institucion = $_POST['codigo_institucion'] ?? '';
-        $nombre_institucion = $_POST['nombre_institucion']?? '';
+        
+        // Permisos de CREACIÓN
+        if (empty($codigo_institucion)) {
+            if ($codigo_perfil_sesion !== '99') {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Solo el superusuario puede crear instituciones.']);
+                exit();
+            }
+            // Si es superusuario, continuar con la creación
+        } 
+        // Permisos de ACTUALIZACIÓN
+        else {
+            if ($codigo_perfil_sesion !== '99' && $codigo_institucion !== $codigo_institucion_sesion) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Permisos insuficientes para editar esta institución.']);
+                exit();
+            }
+            // Si es superusuario o es el administrador de la empresa, continuar
+        }
+
+        $nombre_institucion = $_POST['nombre_institucion'] ?? '';
         $nombre_legal = $_POST['nombre_legal'];
-        $nombre_corto = $_POST['nombre_corto']?? '';
+        $nombre_corto = $_POST['nombre_corto'] ?? '';
         $nit = $_POST['nit'] ?? '';
         $nrc = $_POST['nrc'] ?? '';
-         // Convertir los valores de '1' y '0' a booleanos
         $nrc_vigente = ($_POST['nrc_vigente']);
         $estado_actividad = ($_POST['estado_actividad']);
 
@@ -155,6 +178,12 @@ switch ($accion) {
 
     case 'eliminar':
         $codigo = $_POST['codigo_institucion'];
+        // Permiso de eliminación: solo para superusuarios
+        if ($codigo_perfil_sesion !== '99') {
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Permisos insuficientes para eliminar instituciones.']);
+            exit();
+        }
+
         try {
             $pdo->beginTransaction();
 

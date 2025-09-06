@@ -23,35 +23,63 @@ foreach ($_POST as $key => $value) {
     }
 }
 // Obtener el código de la institución de la sesión
-$codigo_institucion_sesion = $_SESSION['codigo_institucion'];
+$codigo_perfil_sesion = $_SESSION['codigo_perfil'] ?? '';
+$codigo_institucion_sesion = $_SESSION['codigo_institucion'] ?? '';
+
 
 switch ($accion) {
     case 'listarPersonal':
         try {
-            $sql = "
-                SELECT 
-                    p.id_personal, 
-                    p.nombres, 
-                    p.apellidos, 
-                    p.dui, 
-                    p.telefono_celular,
-                    p.correo_electronico,
-                    c_cargo.descripcion AS cargo, 
-                    c_estatus.descripcion AS estatus
-                FROM 
-                    personal p
-                LEFT JOIN 
-                    catalogo_cargo c_cargo ON p.codigo_cargo = c_cargo.codigo
-                LEFT JOIN 
-                    catalogo_estatus c_estatus ON p.codigo_estatus = c_estatus.codigo
-                WHERE
-                    p.codigo_institucion = :codigo_institucion_sesion
-                ORDER BY 
-                    p.apellidos, p.nombres
-            ";
-            $stmt = $pdo->query($sql);
-            $stmt->bindParam(':codigo_institucion_sesion', $codigo_institucion_sesion, PDO::PARAM_STR);
-            $stmt->execute();
+            // Lógica condicional para el usuario root y los demás
+            if ($codigo_perfil_sesion === '99') {
+                // Si es el usuario root, muestra todos los registros
+                $sql = "
+                    SELECT 
+                        p.id_personal, 
+                        p.nombres, 
+                        p.apellidos, 
+                        p.dui, 
+                        p.telefono_celular,
+                        p.correo_electronico,
+                        c_cargo.descripcion AS cargo, 
+                        c_estatus.descripcion AS estatus
+                    FROM 
+                        personal p
+                    LEFT JOIN 
+                        catalogo_cargo c_cargo ON p.codigo_cargo = c_cargo.codigo
+                    LEFT JOIN 
+                        catalogo_estatus c_estatus ON p.codigo_estatus = c_estatus.codigo
+                    ORDER BY 
+                        p.apellidos, p.nombres
+                ";
+                $stmt = $pdo->query($sql);
+            } else {
+                // Si es un administrador, solo muestra los de su institución
+                $sql = "
+                    SELECT 
+                        p.id_personal, 
+                        p.nombres, 
+                        p.apellidos, 
+                        p.dui, 
+                        p.telefono_celular,
+                        p.correo_electronico,
+                        c_cargo.descripcion AS cargo, 
+                        c_estatus.descripcion AS estatus
+                    FROM 
+                        personal p
+                    LEFT JOIN 
+                        catalogo_cargo c_cargo ON p.codigo_cargo = c_cargo.codigo
+                    LEFT JOIN 
+                        catalogo_estatus c_estatus ON p.codigo_estatus = c_estatus.codigo
+                    WHERE
+                        p.codigo_institucion = :codigo_institucion_sesion
+                    ORDER BY 
+                        p.apellidos, p.nombres
+                ";
+                $stmt = $pdo->prepare($sql);
+                $stmt->bindParam(':codigo_institucion_sesion', $codigo_institucion_sesion, PDO::PARAM_STR);
+                $stmt->execute();
+            }
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['data' => $data]);
         } catch (PDOException $e) {
@@ -62,9 +90,14 @@ switch ($accion) {
     case 'obtenerPersonal':
         $id = $_POST['id_personal'];
         try {
-            // Se agrega la condición WHERE para asegurar que solo se obtienen datos de la institución actual
-            $stmt = $pdo->prepare("SELECT * FROM personal WHERE id_personal = ? AND codigo_institucion = ?");
-            $stmt->execute([$id, $codigo_institucion_sesion]);
+            // Lógica condicional para obtener datos según el perfil
+            if ($codigo_perfil_sesion === '99') {
+                $stmt = $pdo->prepare("SELECT * FROM personal WHERE id_personal = ?");
+                $stmt->execute([$id]);
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM personal WHERE id_personal = ? AND codigo_institucion = ?");
+                $stmt->execute([$id, $codigo_institucion_sesion]);
+            }
             $personal = $stmt->fetch(PDO::FETCH_ASSOC);
             echo json_encode(['respuesta' => true, 'personal' => $personal]);
         } catch (PDOException $e) {
@@ -105,8 +138,8 @@ switch ($accion) {
         $dui = $_POST['dui'];
         $nit = $_POST['nit'];
         $isss = $_POST['isss'];
-        $fecha_nacimiento = $_POST['fecha_nacimiento'];
-        $fecha_ingreso = $_POST['fecha_ingreso'];
+        //$fecha_nacimiento = $_POST['fecha_nacimiento'];
+        //$fecha_ingreso = $_POST['fecha_ingreso'];
         $salario = $_POST['salario'];
         $pago_diario = $_POST['pago_diario'];
         $codigo_genero = $_POST['codigo_genero'];
@@ -119,8 +152,10 @@ switch ($accion) {
         $codigo_departamento = $_POST['codigo_departamento'];
         $codigo_municipio = $_POST['codigo_municipio'];
         $codigo_distrito = $_POST['codigo_distrito'];
-        $codigo_institucion = $_POST['codigo_institucion']; // Asignar el código de la institución de la sesión
-        // ... (resto de los campos del formulario) ...
+        $codigo_institucion = $_POST['codigo_institucion'] ?? $codigo_institucion_sesion;
+
+        $fecha_nacimiento = $_POST['fecha_nacimiento'] ?? date('Y-m-d');
+        $fecha_ingreso = $_POST['fecha_ingreso'] ?? date('Y-m-d');
         
         try {
             if (empty($id_personal)) {
@@ -177,16 +212,22 @@ switch ($accion) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener distritos.']);
         }
         break;        
- case 'obtenerInstituciones':
-        try {
-            $sql = "SELECT codigo_institucion, nombre_institucion FROM instituciones ORDER BY nombre_institucion";
-            $stmt = $pdo->query($sql);
-            $instituciones = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            echo json_encode(['respuesta' => true, 'instituciones' => $instituciones]);
-        } catch (PDOException $e) {
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener instituciones.']);
-        }
-        break;
+        case 'obtenerInstituciones':
+            try {
+                if ($codigo_perfil_sesion === '99') {
+                    $sql = "SELECT codigo_institucion, nombre_institucion FROM instituciones ORDER BY nombre_institucion";
+                    $stmt = $pdo->query($sql);
+                } else {
+                    $sql = "SELECT codigo_institucion, nombre_institucion FROM instituciones WHERE codigo_institucion = ?";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute([$codigo_institucion_sesion]);
+                }
+                $instituciones = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                echo json_encode(['respuesta' => true, 'instituciones' => $instituciones]);
+            } catch (PDOException $e) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener instituciones.']);
+            }
+            break;
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;

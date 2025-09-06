@@ -1,48 +1,8 @@
-{# Heredando la plantilla principal #}
+{# views/usuarios/Usuarios.html #}
 {% extends 'default_layout.html' %}
 
 {% block extraCSS %}
-<style>
-    body {
-        background: url(./img/background.jpg) no-repeat center fixed;
-        background-size: cover;
-    }
-    /* Estilos para DataTables */
-    .dataTables_wrapper .dataTables_paginate .paginate_button.current,
-    .dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
-        background-color: #0d6efd !important; /* Color primario de Bootstrap */
-        border-color: #0d6efd !important;
-        color: white !important;
-    }
-    .dataTables_wrapper .dataTables_paginate .paginate_button {
-        padding: 0.5em 1em;
-        margin-left: 2px;
-        text-decoration: none;
-        border: 1px solid transparent;
-        border-radius: 0.25rem;
-        color: #0d6efd;
-    }
-    .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-        background-color: #e9ecef;
-        border-color: #dee2e6;
-        color: #0a58ca;
-    }
-    .dataTables_wrapper .dataTables_paginate .paginate_button.disabled {
-        color: #6c757d;
-    }
-    .dataTables_wrapper .dataTables_filter input,
-    .dataTables_wrapper .dataTables_length select {
-        border-radius: 0.25rem;
-        border: 1px solid #ced4da;
-        padding: 0.375rem 0.75rem;
-    }
-    .dataTables_wrapper .dataTables_info {
-        padding-top: 0.85em;
-    }
-    #usersTable {
-        width: 100%;
-    }
-</style>
+{# ... (estilos existentes) ... #}
 {% endblock %}
 
 {% block contenidos %}
@@ -63,12 +23,12 @@
                             <th scope="col">Usuario</th>
                             <th scope="col">Nombre Personal</th>
                             <th scope="col">Perfil</th>
-                            <th scope="col">Institución</th> <!-- Nueva columna para la institución -->
+                            <th scope="col">Institución</th>
+                            <th scope="col">Estado</th>
                             <th scope="col">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- Los datos se cargarán aquí mediante DataTables -->
                     </tbody>
                 </table>
             </div>
@@ -76,7 +36,6 @@
     </div>
 </div>
 
-<!-- Modal para Crear/Editar Usuario -->
 <div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content rounded-4 shadow-lg">
@@ -110,17 +69,6 @@
                             <span class="input-group-text"><i class="fas fa-id-card"></i></span>
                             <select class="form-select rounded-end" id="personalId" name="personalId" required>
                                 <option value="">Seleccione personal</option>
-                                <!-- Opciones cargadas dinámicamente por JavaScript -->
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mb-3"> <!-- Nuevo campo para Institución -->
-                        <label for="schoolCode" class="form-label">Institución:</label>
-                        <div class="input-group">
-                            <span class="input-group-text"><i class="fas fa-school"></i></span>
-                            <select class="form-select rounded-end" id="schoolCode" name="schoolCode" required>
-                                <option value="">Seleccione una institución</option>
-                                <!-- Opciones cargadas dinámicamente por JavaScript -->
                             </select>
                         </div>
                     </div>
@@ -130,11 +78,19 @@
                             <span class="input-group-text"><i class="fas fa-user-tag"></i></span>
                             <select class="form-select rounded-end" id="profileCode" name="profileCode" required>
                                 <option value="">Seleccione un perfil</option>
-                                <!-- Opciones cargadas dinámicamente por JavaScript -->
                             </select>
                         </div>
                     </div>
-
+                    <div class="mb-4">
+                        <label for="estado" class="form-label">Estado:</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-toggle-on"></i></span>
+                            <select class="form-select rounded-end" id="estado" name="estado" required>
+                                <option value="true">Activo</option>
+                                <option value="false">Inactivo</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary btn-lg rounded-pill">
                             <i class="fas fa-save me-2"></i> Guardar Usuario
@@ -148,6 +104,5 @@
 {% endblock %}
 
 {% block javascripts %}
-<!-- Script de gestión de usuarios -->
 <script src="./js/Usuarios/Usuarios.js"></script>
 {% endblock %}

@@ -265,13 +265,26 @@ $('#tablaPersonal tbody').on('click', '.btnEditar', function () {
     // Evento para el formulario de creación/edición
     $('#personalForm').submit(function (e) {
         e.preventDefault();
-        let formData = $(this).serialize();
-    
+            // Obtener la fecha actual en formato YYYY-MM-DD
+            const fechaActual = obtenerFechaActual();
+                
+            // Asignar la fecha actual a los campos vacíos
+            $('#fecha_ingreso').val(function(i, val) {
+                return val ? val : fechaActual;
+            });
+            $('#fecha_nacimiento').val(function(i, val) {
+                return val ? val : fechaActual;
+            });
+            // Usar FormData para enviar los datos, sin importar si hay archivos o no.
+            let formData = new FormData(this);
+              
         $.ajax({
             url: "admin/personal/crud_personal.php",
             type: "POST",
             dataType: "json",
             data: formData,
+            processData: false, // Importante: Evita que jQuery procese el FormData
+            contentType: false, // Importante: No establece el encabezado del tipo de contenido
             success: function (response) {
                 if (response.respuesta) {
                     toastr.success(response.mensaje);
@@ -308,4 +321,12 @@ $('#tablaPersonal tbody').on('click', '.btnEditar', function () {
     });
 
     cargarCatalogos();
+
+    function obtenerFechaActual() {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0'); // Mes + 1, con cero inicial
+        const dd = String(today.getDate()).padStart(2, '0');      // Día, con cero inicial
+        return `${yyyy}-${mm}-${dd}`;
+    }
 });

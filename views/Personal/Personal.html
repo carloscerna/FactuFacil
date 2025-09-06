@@ -42,6 +42,8 @@
                 <form id="personalForm">
                     <input type="hidden" id="id_personal" name="id_personal">
                     <input type="hidden" name="accion" value="crearActualizar">
+                    <input type="hidden" name="codigo_institucion" value="{{ codigo_institucion }}">
+    
 
                     <div class="row">
                         <div class="col-md-6 mb-3"><label>Nombres</label><input type="text" class="form-control" name="nombres" id="nombres" required></div>
@@ -86,12 +88,15 @@
                             <select class="form-select" name="codigo_distrito" id="selectDistrito"></select>
                         </div>
                     </div>
+                    {# Lógica para mostrar el campo solo si el usuario es 'root' #}
+                    {% if codigo_perfil == '99' %}
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label>Institución</label>
+                            <label for="selectInstitucion" class="form-label">Institución:</label>
                             <select class="form-select" name="codigo_institucion" id="selectInstitucion" required></select>
                         </div>
                     </div>
+                    {% endif %}
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar</button>
                     </div>
