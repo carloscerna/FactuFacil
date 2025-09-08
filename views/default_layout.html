@@ -68,6 +68,30 @@
     <!-- Scripts custom -->
     <script src="./js/loadSideMenu.js"></script>
     <script src="./js/principal_js_login.js"></script>
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      main {
+        flex: 1;
+      }
+    </style>
+    <style>
+      body {
+        background: url('img/FondoFactuFacil.png') no-repeat center center fixed;
+        background-size: cover;
+      }
+    </style>
   {% block extraCSS %}{% endblock %}
 </head>
 
@@ -123,7 +147,7 @@
           {% block contenidos %}
 
           {% endblock %}
-          <footer class="main-footer text-black bg-black p-1">
+          <footer class="main-footer text-black bg-black p-2">
             <div class="float-right d-none d-sm-inline">
               <small>{{ nombre_institucion }}</small>
             </div>

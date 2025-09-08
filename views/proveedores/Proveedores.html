@@ -1,0 +1,110 @@
+{# views/proveedores/Proveedores.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center rounded-top-3">
+            <h2 class="mb-0">Gestión de Proveedores</h2>
+            <button class="btn btn-light" id="btnNuevoProveedor" type="button" data-bs-toggle="modal" data-bs-target="#proveedorModal">
+                <i class="fas fa-plus-circle me-2"></i> Nuevo Proveedor
+            </button>
+        </div>
+        <div class="card-body p-4">
+            <table id="tablaProveedores" class="table table-striped table-hover table-bordered">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Código</th>
+                        <th>Nombres</th>
+                        <th>Apellidos</th>
+                        <th>Empresa</th>
+                        <th>Teléfono</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="proveedorModal" tabindex="-1" aria-labelledby="proveedorModalLabel">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content rounded-4 shadow-lg">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title" id="proveedorModalLabel">Formulario de Proveedor</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="proveedorForm">
+                    <input type="hidden" id="id_proveedores" name="id_proveedores">
+                    <input type="hidden" name="accion" value="crearActualizar">
+
+                    <div class="row">
+                        <div class="col-md-3 mb-3"><label>Código</label><input type="text" class="form-control" name="codigo" id="codigo" readonly required value="Pendiente..."></div>
+                        <div class="col-md-9 mb-3"><label>Nombre Empresa</label><input type="text" class="form-control" name="nombre_empresa" id="nombre_empresa"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3"><label>Nombres</label><input type="text" class="form-control" name="nombres" id="nombres" required></div>
+                        <div class="col-md-6 mb-3"><label>Apellidos</label><input type="text" class="form-control" name="apellidos" id="apellidos"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3"><label>DUI</label><input type="text" class="form-control" name="dui" id="dui"></div>
+                        <div class="col-md-4 mb-3"><label>NIT</label><input type="text" class="form-control" name="nit" id="nit"></div>
+                        <div class="col-md-4 mb-3"><label>NRC</label><input type="text" class="form-control" name="numero_registro" id="numero_registro"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3"><label>Teléfono Celular</label><input type="text" class="form-control" name="telefono_celular" id="telefono_celular"></div>
+                        <div class="col-md-4 mb-3"><label>Teléfono Residencia</label><input type="text" class="form-control" name="telefono_residencia" id="telefono_residencia"></div>
+                        <div class="col-md-4 mb-3"><label>Correo Electrónico</label><input type="email" class="form-control" name="correo_electronico" id="correo_electronico"></div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label>País</label>
+                            <select class="form-select" name="codigo_pais" id="selectPais"></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label>Giro</label>
+                            <select class="form-select" name="codigo_giro" id="selectGiro"></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label>Estatus</label>
+                            <select class="form-select" name="codigo_estatus" id="selectEstatus"></select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label>Departamento</label>
+                            <select class="form-select" name="codigo_departamento" id="selectDepartamento"></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label>Municipio</label>
+                            <select class="form-select" name="codigo_municipio" id="selectMunicipio"></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label>Distrito</label>
+                            <select class="form-select" name="codigo_distrito" id="selectDistrito"></select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label>Dirección</label><textarea class="form-control" name="direccion" id="direccion" rows="2"></textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.mask/1.14.16/jquery.mask.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="./js/proveedores/Proveedores.js"></script>
+{% endblock %}
