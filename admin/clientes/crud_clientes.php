@@ -101,7 +101,8 @@ switch ($accion) {
         $nombres = $_POST['nombres'] ?? '';
         $apellidos = $_POST['apellidos'] ?? '';
         $cliente_empresa = $_POST['cliente_empresa'] ?? '';
-        $giro = $_POST['giro'] ?? '';
+        $codigo_pais = $_POST['codigo_pais'] ?? '';
+        $codigo_giro = $_POST['codigo_giro'] ?? '';
         $direccion = $_POST['direccion'] ?? '';
         $codigo_departamento = $_POST['codigo_departamento'] ?? '';
         $codigo_municipio = $_POST['codigo_municipio'] ?? '';
@@ -122,14 +123,14 @@ switch ($accion) {
                 if (!$codigo_generado) {
                     throw new Exception("No se pudo generar el código del cliente.");
                 }
-                $sql = "INSERT INTO clientes (codigo, codigo_institucion, nombres, apellidos, nombre_empresa, giro, direccion, codigo_departamento, codigo_municipio, codigo_distrito, dui, nit, numero_registro, telefono_residencia, telefono_celular, fecha_creacion, codigo_estatus, correo_electronico) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)";
+                $sql = "INSERT INTO clientes (codigo, codigo_institucion, nombres, apellidos, nombre_empresa, direccion, codigo_departamento, codigo_municipio, codigo_distrito, dui, nit, numero_registro, telefono_residencia, telefono_celular, fecha_creacion, codigo_estatus, correo_electronico, codigo_pais, codigo_giro) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $nombres, $apellidos, $cliente_empresa, $giro, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $correo_electronico]);
+                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $nombres, $apellidos, $cliente_empresa, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $correo_electronico,$codigo_pais, $codigo_giro]);
             } else {
-                $sql = "UPDATE clientes SET codigo = ?, nombres = ?, apellidos = ?, nombre_empresa = ?, giro = ?, direccion = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, dui = ?, nit = ?, numero_registro = ?, telefono_residencia = ?, telefono_celular = ?, codigo_estatus = ?, correo_electronico = ? WHERE id_clientes = ? AND codigo_institucion = ?";
+                $sql = "UPDATE clientes SET codigo = ?, nombres = ?, apellidos = ?, nombre_empresa = ?, direccion = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, dui = ?, nit = ?, numero_registro = ?, telefono_residencia = ?, telefono_celular = ?, codigo_estatus = ?, correo_electronico = ?, codigo_pais = ?, codigo_giro = ? WHERE id_clientes = ? AND codigo_institucion = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo, $nombres, $apellidos, $cliente_empresa, $giro, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $correo_electronico, $id_clientes, $codigo_institucion_sesion]);
+                $stmt->execute([$codigo, $nombres, $apellidos, $cliente_empresa, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $correo_electronico, $codigo_pais, $codigo_giro, $id_clientes, $codigo_institucion_sesion]);
             }
             echo json_encode(['respuesta' => true, 'mensaje' => 'Cliente guardado exitosamente.']);
         } catch (PDOException $e) {
@@ -191,8 +192,31 @@ switch ($accion) {
         }
         break;
         
+        case 'obtenerPaises':
+            try {
+                $sql = "SELECT codigo, descripcion FROM cat_020 ORDER BY descripcion";
+                $stmt = $pdo->query($sql);
+                $paises = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                echo json_encode(['respuesta' => true, 'paises' => $paises]);
+            } catch (PDOException $e) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener países.']);
+            }
+            break;
+    
+        case 'obtenerGiros':
+            try {
+                $sql = "SELECT codigo, descripcion FROM cat_019 ORDER BY descripcion";
+                $stmt = $pdo->query($sql);
+                $giros = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                echo json_encode(['respuesta' => true, 'giros' => $giros]);
+            } catch (PDOException $e) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener giros.']);
+            }
+            break;
+        
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
+
         break;
 }
 ?>

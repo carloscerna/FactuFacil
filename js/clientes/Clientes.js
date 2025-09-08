@@ -27,6 +27,16 @@ $(function () {
     $('#telefono_celular').mask('0000-0000');
     $('#telefono_residencia').mask('0000-0000');
 
+      // --- Aplicar Select2 a los menús desplegables ---
+      $('#selectPais').select2({
+        dropdownParent: $('#clienteModal'), // Para que funcione dentro del modal
+        theme: 'bootstrap-5'
+    });
+    $('#selectGiro').select2({
+        dropdownParent: $('#clienteModal'),
+        theme: 'bootstrap-5'
+    });
+    
     // Funciones para cargar los catálogos
     function cargarCatalogos() {
         return $.ajax({
@@ -47,6 +57,48 @@ $(function () {
                     $.each(response.catalogos.estatus, function (key, item) {
                         selectEstatus.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
                     });
+                }
+            }
+        });
+    }
+    
+    // Función para cargar los países
+    function cargarPaises() {
+        return $.ajax({
+            url: "admin/clientes/crud_clientes.php",
+            type: "POST",
+            dataType: "json",
+            data: { accion: "obtenerPaises" },
+            success: function(response) {
+                if (response.respuesta) {
+                    let select = $('#selectPais');
+                    select.empty().append('<option value="">Seleccione...</option>');
+                    $.each(response.paises, function(key, item) {
+                        select.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
+                    });
+                    // Valor por defecto
+                    select.val('9300');
+                }
+            }
+        });
+    }
+    
+    // Función para cargar los giros
+    function cargarGiros() {
+        return $.ajax({
+            url: "admin/clientes/crud_clientes.php",
+            type: "POST",
+            dataType: "json",
+            data: { accion: "obtenerGiros" },
+            success: function(response) {
+                if (response.respuesta) {
+                    let select = $('#selectGiro');
+                    select.empty().append('<option value="">Seleccione...</option>');
+                    $.each(response.giros, function(key, item) {
+                        select.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
+                    });
+                     // Valor por defecto
+                    select.val('10005');
                 }
             }
         });
@@ -107,19 +159,22 @@ $(function () {
         }
     });
 
-// Evento para el botón "Nuevo Cliente"
-$('#btnNuevoCliente').on('click', function () {
-    $('#clienteModalLabel').text('Crear Nuevo Cliente');
-    $('#clienteForm')[0].reset();
-    $('#id_clientes').val('');
-    
-    // Limpiar y marcar el código como pendiente
-    $('#codigo').val('Pendiente...');
-    
-    $('.form-control').removeClass('is-invalid is-valid');
-    cargarCatalogos();
-    $('#clienteModal').modal('show');
-});
+    // Evento para el botón "Nuevo Cliente"
+    $('#btnNuevoCliente').on('click', function () {
+        $('#clienteModalLabel').text('Crear Nuevo Cliente');
+        $('#clienteForm')[0].reset();
+        $('#id_clientes').val('');
+        
+        $('#codigo').val('Pendiente...');
+        
+        $('.form-control').removeClass('is-invalid is-valid');
+        
+        cargarCatalogos();
+        cargarPaises();
+        cargarGiros();
+
+        $('#clienteModal').modal('show');
+    });
 
     // Evento para el botón "Editar"
     $('#tablaClientes tbody').on('click', '.btnEditar', function () {
@@ -127,7 +182,7 @@ $('#btnNuevoCliente').on('click', function () {
         let id_clientes = parseInt(fila.find('td:eq(0)').text());
         $('#clienteModalLabel').text('Editar Cliente');
         
-        cargarCatalogos().done(function() {
+        $.when(cargarCatalogos(), cargarPaises(), cargarGiros()).done(function() {
             $.ajax({
                 url: "admin/clientes/crud_clientes.php",
                 type: "POST",
@@ -154,10 +209,12 @@ $('#btnNuevoCliente').on('click', function () {
                         $('#numero_registro').val(cliente.numero_registro);
                         $('#telefono_celular').val(cliente.telefono_celular);
                         $('#telefono_residencia').val(cliente.telefono_residencia);
+                        $('#correo_electronico').val(cliente.correo_electronico);
+
                         $('#selectEstatus').val(cliente.codigo_estatus);
-                        $('#correo_electronico').val(cliente.correo_electronico); // Populate the email field
-
-
+                        $('#selectPais').val(cliente.codigo_pais).trigger('change');
+                        $('#selectGiro').val(cliente.codigo_giro).trigger('change');
+                        
                         $('#selectDepartamento').val(cliente.codigo_departamento).trigger('change');
                         
                         setTimeout(function() {
@@ -223,22 +280,5 @@ $('#btnNuevoCliente').on('click', function () {
         }
     });
 
-
-    // --- Add jQuery Validation rule for the email field ---
-    $('#clienteForm').validate({
-        rules: {
-            // ... existing rules ...
-            correo_electronico: {
-                email: true // Validates a correctly formatted email, but doesn't make it required.
-            }
-        },
-        messages: {
-            // ... existing messages ...
-            correo_electronico: {
-                email: "Por favor, ingrese una dirección de correo válida."
-            }
-        },
-        // ... (existing validation options) ...
-    });
     cargarCatalogos();
 });
