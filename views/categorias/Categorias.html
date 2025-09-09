@@ -1,0 +1,68 @@
+{# views/categorias/Categorias.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center rounded-top-3">
+            <h2 class="mb-0">Gestión de Categorías</h2>
+            <button class="btn btn-light" id="btnNuevaCategoria" type="button" data-bs-toggle="modal" data-bs-target="#categoriaModal">
+                <i class="fas fa-plus-circle me-2"></i> Nueva Categoría
+            </button>
+        </div>
+        <div class="card-body p-4">
+            <table id="tablaCategorias" class="table table-striped table-hover table-bordered">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Código</th>
+                        <th>Descripción</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="categoriaModal" tabindex="-1" aria-labelledby="categoriaModalLabel">
+    <div class="modal-dialog">
+        <div class="modal-content rounded-4 shadow-lg">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title" id="categoriaModalLabel">Formulario de Categoría</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="categoriaForm">
+                    <input type="hidden" id="id_categoria" name="id_categoria">
+                    <input type="hidden" name="accion" value="crearActualizar">
+
+                    <div class="mb-3">
+                        <label>Código</label>
+                        <input type="text" class="form-control" name="codigo" id="codigo" required readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label>Descripción</label>
+                        <input type="text" class="form-control" name="descripcion" id="descripcion" required maxlength="40">
+                    </div>
+                    <div class="mb-3">
+                        <label>Comentario</label>
+                        <textarea class="form-control" name="comentario" id="comentario" rows="3"></textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="./js/categorias/Categorias.js"></script>
+{% endblock %}
