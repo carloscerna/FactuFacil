@@ -1,0 +1,113 @@
+{# views/compras/RegistrarCompra.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center rounded-top-3">
+            <h2 class="mb-0">Registrar Compra</h2>
+        </div>
+        <div class="card-body p-4">
+            <form id="formCompra">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label>Número de Documento</label>
+                        <input type="text" class="form-control" name="numero_documento" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label>Tipo de Documento</label>
+                        <select class="form-select" id="selectTipoDte" name="tipo_documento" required></select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label>Fecha de Emisión</label>
+                        <input type="date" class="form-control" name="fecha_emision" value="{{ "now"|date("Y-m-d") }}" required>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label>Proveedor</label>
+                        <select class="form-select" id="selectProveedor" name="proveedor_id" required></select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label>Condición de Pago</label>
+                        <select class="form-select" id="selectCondicionPago" name="condicion_pago" required>
+                            <option value="">Seleccione...</option>
+                            <option value="Contado">Contado</option>
+                            <option value="Credito">Crédito</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label>Plazo de Pago (Días)</label>
+                        <input type="number" class="form-control" name="plazo_pago" id="plazoPago" readonly>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label>Observaciones</label>
+                        <textarea class="form-control" name="observaciones" rows="2"></textarea>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <h5 class="mb-3">Productos de la Compra</h5>
+                <div class="row g-2">
+                    <div class="col-md-3 mb-3">
+                        <label>ID Producto</label>
+                        <input type="text" class="form-control" id="idProducto" placeholder="Escanee o ingrese el ID">
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label>Descripción</label>
+                        <input type="text" class="form-control" id="descripcionProducto" readonly>
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label>Cantidad</label>
+                        <input type="number" step="0.01" class="form-control" id="cantidadProducto" value="1">
+                    </div>
+                    <div class="col-md-2 mb-3">
+                        <label>Precio Unitario</label>
+                        <input type="number" step="0.01" class="form-control" id="precioUnitarioProducto">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end mb-3">
+                        <button type="button" class="btn btn-success w-100" id="btnAgregarProducto"><i class="fas fa-plus me-2"></i>Agregar</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive mt-4">
+                    <table id="tablaProductosCompra" class="table table-striped table-hover table-bordered">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Descripción</th>
+                                <th>Cantidad</th>
+                                <th>Precio Unitario</th>
+                                <th>Subtotal</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Aquí se agregarán los productos dinámicamente -->
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-end"><strong>Total de la Compra</strong></td>
+                                <td id="totalCompra" class="text-end"><strong>0.00</strong></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                
+                <div class="d-grid mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar Compra</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="./js/compras/compras.js"></script>
+{% endblock %}
