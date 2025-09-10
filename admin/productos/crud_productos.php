@@ -79,7 +79,10 @@ switch ($accion) {
     case 'obtenerProducto':
         $id = $_POST['id_productos'];
         try {
-            $sql = "SELECT * FROM catalogo_productos WHERE id_productos = ? AND codigo_institucion = ?";
+            $sql = "SELECT p.*, g.porcentaje AS porcentaje_ganancia, c_imp.porcentaje AS porcentaje_impuesto, c_imp.monto_fijo, c_imp.tipo_impuesto FROM catalogo_productos p
+                    LEFT JOIN catalogo_ganancia g ON p.codigo_ganancia = g.codigo AND p.codigo_institucion = g.codigo_institucion
+                    LEFT JOIN cat_015 c_imp ON p.impuesto_aplicable = c_imp.codigo
+                    WHERE p.id_productos = ? AND p.codigo_institucion = ?";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$id, $codigo_institucion_sesion]);
             $producto = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -89,7 +92,7 @@ switch ($accion) {
         }
         break;
         
-     case 'crearActualizar':
+    case 'crearActualizar':
         $id_productos = $_POST['id_productos'] ?? '';
         $codigo_categoria = $_POST['codigo_categoria'] ?? '';
         $descripcion = $_POST['descripcion'] ?? '';
@@ -102,25 +105,34 @@ switch ($accion) {
         $codigo_barra = $_POST['codigo_barra'] ?? '';
         $comentario = $_POST['comentario'] ?? '';
         $codigo_fiscal = $_POST['codigo_fiscal'] ?? '';
+        $codigo_ganancia = $_POST['porcentaje_ganancia'] ?? ''; // Nuevo campo
+        $fecha_vencimiento = $_POST['fecha_vencimiento'] ?? null; // Nuevo campo
+
+        if (empty($fecha_vencimiento)) {
+            $fecha_vencimiento = null;
+        }
         
-        $porcentaje_impuesto = $_POST['porcentaje_impuesto'] ?? 0; // Se usará solo si el tipo es PORCENTAJE
-        $monto_impuesto = $_POST['monto_impuesto'] ?? 0; // Nuevo campo para el monto fijo
-        $tipo_impuesto = $_POST['tipo_impuesto'] ?? ''; // Nuevo campo para el tipo de impuesto
+        $porcentaje_impuesto = $_POST['porcentaje_impuesto'] ?? 0;
+        $monto_impuesto = $_POST['monto_impuesto'] ?? 0;
+        $tipo_impuesto = $_POST['tipo_impuesto'] ?? '';
         $porcentaje_ganancia = $_POST['porcentaje_ganancia'] ?? 0;
+        
+        $precio_costo = floatval($precio_costo);
+        $porcentaje_ganancia = floatval($porcentaje_ganancia);
         
         $precio_con_impuesto = 0;
         
-        // Determinar el cálculo del impuesto
         if ($tipo_impuesto === 'PORCENTAJE') {
+            $porcentaje_impuesto = floatval($porcentaje_impuesto);
             $factor_impuesto = 1 + ($porcentaje_impuesto / 100);
             $precio_con_impuesto = $precio_costo * $factor_impuesto;
         } elseif ($tipo_impuesto === 'MONETARIO') {
+            $monto_impuesto = floatval($monto_impuesto);
             $precio_con_impuesto = $precio_costo + $monto_impuesto;
         } else {
-            $precio_con_impuesto = $precio_costo; // Por si no hay impuesto
+            $precio_con_impuesto = $precio_costo;
         }
         
-        // Calcular el precio final con la ganancia
         $factor_ganancia = 1 + ($porcentaje_ganancia / 100);
         $precio_unitario_calculado = $precio_con_impuesto * $factor_ganancia;
         
@@ -130,34 +142,22 @@ switch ($accion) {
                 if (!$codigo_generado) {
                     throw new Exception("No se pudo generar el código del producto.");
                 }
-                $sql = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, codigo_categoria, codigo_fiscal, descripcion, unidad_medida, tipo_item, impuesto_aplicable, stock_actual, stock_minimo, precio_costo, precio_unitario, codigo_barra, comentario) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, codigo_categoria, codigo_fiscal, descripcion, unidad_medida, tipo_item, impuesto_aplicable, stock_actual, stock_minimo, precio_costo, precio_unitario, codigo_barra, comentario, codigo_ganancia, fecha_vencimiento) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario]);
+                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $codigo_ganancia, $fecha_vencimiento]);
                 echo json_encode(['respuesta' => true, 'mensaje' => 'Producto creado exitosamente.', 'nuevo_codigo' => $codigo_generado]);
             } else {
                 $codigo_interno = $_POST['codigo_interno'];
-                $sql = "UPDATE catalogo_productos SET codigo_categoria = ?, codigo_fiscal = ?, descripcion = ?, unidad_medida = ?, tipo_item = ?, impuesto_aplicable = ?, stock_actual = ?, stock_minimo = ?, precio_costo = ?, precio_unitario = ?, codigo_barra = ?, comentario = ? WHERE id_productos = ? AND codigo_institucion = ?";
+                $sql = "UPDATE catalogo_productos SET codigo_categoria = ?, codigo_fiscal = ?, descripcion = ?, unidad_medida = ?, tipo_item = ?, impuesto_aplicable = ?, stock_actual = ?, stock_minimo = ?, precio_costo = ?, precio_unitario = ?, codigo_barra = ?, comentario = ?, codigo_ganancia = ?, fecha_vencimiento = ? WHERE id_productos = ? AND codigo_institucion = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $id_productos, $codigo_institucion_sesion]);
+                $stmt->execute([$codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $codigo_ganancia, $fecha_vencimiento, $id_productos, $codigo_institucion_sesion]);
                 echo json_encode(['respuesta' => true, 'mensaje' => 'Producto guardado exitosamente.']);
             }
         } catch (PDOException $e) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar: ' . $e->getMessage()]);
         } catch (Exception $e) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error: ' . $e->getMessage()]);
-        }
-        break;
-
-    case 'eliminar':
-        $id_productos = $_POST['id_productos'];
-        try {
-            $sql = "DELETE FROM catalogo_productos WHERE id_productos = ? AND codigo_institucion = ?";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$id_productos, $codigo_institucion_sesion]);
-            echo json_encode(['respuesta' => true, 'mensaje' => 'Producto eliminado.']);
-        } catch (PDOException $e) {
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al eliminar: ' . $e->getMessage()]);
         }
         break;
 
@@ -177,7 +177,6 @@ switch ($accion) {
             $sql_tipos = "SELECT codigo, descripcion FROM cat_003 ORDER BY descripcion";
             $catalogos['tipos_item'] = $pdo->query($sql_tipos)->fetchAll(PDO::FETCH_ASSOC);
 
-            // Fetch both percentage and monetary value, and the type from cat_015
             $sql_impuestos = "SELECT codigo, descripcion, porcentaje, monto_fijo, tipo_impuesto FROM cat_015 ORDER BY descripcion";
             $catalogos['impuestos'] = $pdo->query($sql_impuestos)->fetchAll(PDO::FETCH_ASSOC);
             
@@ -192,23 +191,23 @@ switch ($accion) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener catálogos: ' . $e->getMessage()]);
         }
         break;
-
-        case 'obtenerPorcentajeImpuesto':
-            $codigo_impuesto = $_POST['codigo_impuesto'] ?? '';
-            try {
-                $sql = "SELECT porcentaje, monto_fijo, tipo_impuesto FROM cat_015 WHERE codigo = ?";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_impuesto]);
-                $impuesto = $stmt->fetch(PDO::FETCH_ASSOC);
-                if ($impuesto) {
-                    echo json_encode(['respuesta' => true, 'impuesto' => $impuesto]);
-                } else {
-                    echo json_encode(['respuesta' => false, 'mensaje' => 'Impuesto no encontrado.']);
-                }
-            } catch (PDOException $e) {
-                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener impuesto: ' . $e->getMessage()]);
+        
+    case 'obtenerPorcentajeImpuesto':
+        $codigo_impuesto = $_POST['codigo_impuesto'] ?? '';
+        try {
+            $sql = "SELECT porcentaje, monto_fijo, tipo_impuesto FROM cat_015 WHERE codigo = ?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$codigo_impuesto]);
+            $impuesto = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($impuesto) {
+                echo json_encode(['respuesta' => true, 'impuesto' => $impuesto]);
+            } else {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Impuesto no encontrado.']);
             }
-            break;
+        } catch (PDOException $e) {
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener impuesto: ' . $e->getMessage()]);
+        }
+        break;
 
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);

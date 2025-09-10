@@ -20,7 +20,6 @@ $(function () {
         "language": { "url": "php_libs/idioma/es_es.json" }
     });
 
- // Función de cálculo
     function calcularPrecioUnitario() {
         const precioCosto = parseFloat($('#precio_costo').val()) || 0;
         const porcentajeGanancia = parseFloat($('#selectGanancia option:selected').data('porcentaje')) || 0;
@@ -39,11 +38,8 @@ $(function () {
         $('#precio_unitario').val(precioFinal.toFixed(2));
     }
 
-    // Eventos para recalcular el precio al cambiar los campos
     $('#precio_costo').on('input', calcularPrecioUnitario);
     $('#selectGanancia').on('change', calcularPrecioUnitario);
-
-    // Evento para el cambio en el select de impuestos
     $('#selectImpuesto').on('change', function() {
         const codigo_impuesto = $(this).val();
         if (codigo_impuesto) {
@@ -58,13 +54,13 @@ $(function () {
                         $('#tipo_impuesto').val(impuesto.tipo_impuesto);
                         $('#porcentaje_impuesto').val(impuesto.porcentaje);
                         $('#monto_impuesto').val(impuesto.monto_fijo);
-                        calcularPrecioUnitario(); // Recalcular al obtener el impuesto
+                        calcularPrecioUnitario();
                     }
                 }
             });
         }
     });
-    // Función para cargar todos los catálogos
+
     function cargarCatalogos() {
         return $.ajax({
             url: "admin/productos/crud_productos.php",
@@ -108,7 +104,6 @@ $(function () {
         });
     }
 
-    // Evento para el botón "Nuevo Producto"
     $('#btnNuevoProducto').on('click', function () {
         $('#productoModalLabel').text('Crear Nuevo Producto');
         $('#productoForm')[0].reset();
@@ -119,7 +114,6 @@ $(function () {
         $('#productoModal').modal('show');
     });
 
-    // Evento para el botón "Editar"
     $('#tablaProductos tbody').on('click', '.btnEditar', function () {
         let fila = $(this).closest("tr");
         let id_productos = parseInt(fila.find('td:eq(0)').text());
@@ -149,15 +143,18 @@ $(function () {
                         $('#stock_minimo').val(producto.stock_minimo);
                         $('#codigo_barra').val(producto.codigo_barra);
                         $('#comentario').val(producto.comentario);
-
+                        $('#fecha_vencimiento').val(producto.fecha_vencimiento); // Nuevo campo
+                        
                         $('#selectCategoria').val(producto.codigo_categoria);
                         $('#selectUnidadMedida').val(producto.unidad_medida);
                         $('#selectTipoItem').val(producto.tipo_item);
                         $('#selectImpuesto').val(producto.impuesto_aplicable);
+                        $('#selectGanancia').val(producto.codigo_ganancia);
 
-                        // Aquí debes cargar los porcentajes para el cálculo en el formulario
-                        // Esto requiere una lógica adicional en el backend o en el frontend.
-                        // La mejor forma es que el backend devuelva también los porcentajes al editar.
+                        $('#porcentaje_impuesto').val(producto.porcentaje_impuesto);
+                        $('#monto_impuesto').val(producto.monto_fijo);
+                        $('#tipo_impuesto').val(producto.tipo_impuesto);
+                        calcularPrecioUnitario();
                         
                         $('#productoModal').modal('show');
                     }
@@ -166,7 +163,6 @@ $(function () {
         });
     });
 
-    // Evento para el formulario de creación/edición
     $('#productoForm').submit(function (e) {
         e.preventDefault();
         let formData = $(this).serialize();
@@ -191,7 +187,6 @@ $(function () {
         });
     });
 
-    // Evento para el botón "Eliminar"
     $('#tablaProductos tbody').on('click', '.btnBorrar', function () {
         let fila = $(this).closest("tr");
         let id_productos = parseInt(fila.find('td:eq(0)').text());
