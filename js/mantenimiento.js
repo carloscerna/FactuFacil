@@ -14,7 +14,7 @@ $(function () {
                     let select = $('#selectCatalogo');
                     select.empty().append('<option value="">-- Seleccione un catálogo --</option>');
                     $.each(response.tablas, function (key, item) {
-                        select.append(`<option value="${item.codigo}" data-titulo="${item.descripcion}">${item.descripcion}</option>`);
+                        select.append(`<option value="${item.codigo}" data-titulo="${item.descripcion}">${item.codigo} - ${item.descripcion}</option>`);
                     });
                 } else {
                     toastr.error('Error al cargar la lista de catálogos.');
