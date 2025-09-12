@@ -341,6 +341,104 @@ $(function () {
         });
     });
 
+// Nueva función para cargar los datos de la compra a editar
+    function cargarDatosCompra(id) {
+        $.when(cargarCatalogos(), cargarProveedores()).done(function() {
+            $.ajax({
+                url: 'admin/compras/crud_compras.php',
+                type: 'POST',
+                dataType: 'json',
+                data: { accion: 'obtenerCompra', id_compra: id },
+                success: async function(response) {
+                    if (response.respuesta) {
+                        const compra = response.compra;
+                        const detalle = response.detalle;
+                        
+                        // Poblar el formulario de cabecera
+                        $('#idCompra').val(compra.id_compra);
+                        $('[name="numero_documento"]').val(compra.numero_documento);
+                        $('#selectTipoDte').val(compra.tipo_documento);
+                        $('[name="fecha_emision"]').val(compra.fecha_emision);
+                        $('#selectProveedor').val(compra.id_proveedores);
+                        $('#selectCondicionPago').val(compra.condicion_pago).trigger('change');
+                        $('#selectPlazoPagoDTE').val(compra.plazo_pago);
+                        $('[name="observaciones"]').val(compra.observaciones);
+
+                        // Poblar la tabla de productos de la compra
+                        productosCompra = [];
+                        for (const item of detalle) {
+                            productosCompra.push({
+                                id_productos: item.id_productos,
+                                descripcion: item.descripcion,
+                                cantidad: parseFloat(item.cantidad),
+                                precio_unitario: parseFloat(item.precio_unitario),
+                                impuesto_aplicable: item.impuesto_aplicable,
+                                impuesto_descripcion: (await obtenerDetalleImpuesto(item.impuesto_aplicable)).descripcion_completa,
+                                subtotal: parseFloat(item.subtotal)
+                            });
+                        }
+                        renderizarTabla();
+
+                    } else {
+                        toastr.error(response.mensaje);
+                    }
+                }
+            });
+        });
+    }
+
+    // Evento para el envío del formulario de actualización
+    $('#formEditarCompra').submit(function(e) {
+        e.preventDefault();
+
+        if (productosCompra.length === 0) {
+            toastr.error('Debe agregar al menos un producto a la compra.');
+            return;
+        }
+
+        const totalFinal = parseFloat($('#totalCompra').text());
+
+        const formData = {
+            accion: 'actualizarCompra',
+            id_compra: $('#idCompra').val(),
+            numero_documento: $('[name="numero_documento"]').val(),
+            tipo_documento: $('[name="tipo_documento"]').val(),
+            fecha_emision: $('[name="fecha_emision"]').val(),
+            id_proveedores: $('#selectProveedor').val(),
+            condicion_pago: $('#selectCondicionPago').val(),
+            plazo_pago: $('#selectPlazoPagoDTE').val(),
+            total_compra: totalFinal.toFixed(2),
+            observaciones: $('[name="observaciones"]').val(),
+            productos: JSON.stringify(productosCompra)
+        };
+
+        $.ajax({
+            url: 'admin/compras/crud_compras.php',
+            type: 'POST',
+            dataType: 'json',
+            data: formData,
+            success: function(response) {
+                if (response.respuesta) {
+                    toastr.success(response.mensaje);
+                    // Opcional: Redirigir a una página de listado de compras
+                    // window.location.href = 'listado_compras.html';
+                } else {
+                    toastr.error('Error: ' + response.mensaje);
+                }
+            },
+            error: function() {
+                toastr.error('Error al procesar la solicitud.');
+            }
+        });
+    });
+
+    // Cargar los datos de la compra al iniciar la página
+    if (id_compra) {
+        cargarDatosCompra(id_compra);
+    } else {
+        toastr.error('ID de compra no especificado para la edición.');
+    }
+
     cargarProveedores();
     cargarCatalogos();
 });
