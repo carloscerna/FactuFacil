@@ -24,6 +24,6 @@ $(function () {
         let fila = $(this).closest("tr");
         let id_compra = parseInt(fila.find('td:eq(0)').text());
         // El enlace ahora apunta al archivo PHP
-        window.location.href = `editar_compra.php?id_compra=${id_compra}`;
+        window.location.href = `EditarCompra.php?id_compra=${id_compra}`;
     });
 });

@@ -92,7 +92,7 @@ switch ($accion) {
                 throw new Exception("Compra no encontrada.");
             }
 
-            $sql_detalle = "SELECT d.*, p.descripcion FROM compras_detalle d INNER JOIN catalogo_productos p ON d.producto_id = p.codigo_interno WHERE d.id_compra = ?";
+            $sql_detalle = "SELECT d.*, p.descripcion FROM compras_detalle d INNER JOIN catalogo_productos p ON d.codigo_producto = p.codigo_interno WHERE d.id_compra = ?";
             $stmt_detalle = $pdo->prepare($sql_detalle);
             $stmt_detalle->execute([$id_compra]);
             $detalle = $stmt_detalle->fetchAll(PDO::FETCH_ASSOC);
@@ -298,7 +298,7 @@ switch ($accion) {
             echo json_encode(['data' => []]);
         }
         break;
-        
+
     case 'obtenerDetalleImpuesto':
         $codigo_impuesto = $_POST['codigo_impuesto'] ?? '';
         try {
