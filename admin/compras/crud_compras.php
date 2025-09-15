@@ -277,6 +277,28 @@ switch ($accion) {
         }
         break;
 
+        case 'listarCompras':
+        try {
+            $sql = "SELECT 
+                        c.id_compra,
+                        c.numero_documento,
+                        c.fecha_emision,
+                        p.nombre_empresa AS proveedor_nombre,
+                        c.total_compra
+                    FROM compras_cabecera c
+                    INNER JOIN proveedores p ON c.id_proveedores = p.id_proveedores
+                    WHERE c.codigo_institucion = :codigo_institucion_sesion
+                    ORDER BY c.fecha_emision DESC";
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindParam(':codigo_institucion_sesion', $codigo_institucion_sesion, PDO::PARAM_STR);
+            $stmt->execute();
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['data' => $data]);
+        } catch (PDOException $e) {
+            echo json_encode(['data' => []]);
+        }
+        break;
+        
     case 'obtenerDetalleImpuesto':
         $codigo_impuesto = $_POST['codigo_impuesto'] ?? '';
         try {

@@ -4,6 +4,9 @@ $(function () {
     let productosCompra = [];
     let tablaBusquedaProductosDT = null; // Variable para la instancia de DataTable
 
+    // Obtener el id_compra de la plantilla (se pasa desde el PHP)
+    const id_compra = $('input#idCompra').val();
+
     function cargarCatalogos() {
         $.ajax({
             url: 'admin/compras/crud_compras.php',
@@ -385,6 +388,13 @@ $(function () {
                 }
             });
         });
+    }
+
+    // Al inicio de la carga de la página
+    if (id_compra) {
+        cargarDatosCompra(id_compra);
+    } else {
+        toastr.error('ID de compra no especificado para la edición.');
     }
 
     // Evento para el envío del formulario de actualización

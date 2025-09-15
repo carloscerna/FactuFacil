@@ -1,0 +1,38 @@
+{# views/compras/ListadoCompras.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center rounded-top-3">
+            <h2 class="mb-0">Listado de Compras</h2>
+        </div>
+        <div class="card-body p-4">
+            <table id="tablaListadoCompras" class="table table-striped table-hover table-bordered w-100">
+                <thead>
+                    <tr>
+                        <th>ID Compra</th>
+                        <th>Número de Documento</th>
+                        <th>Proveedor</th>
+                        <th>Fecha de Emisión</th>
+                        <th>Total</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="./js/compras/listado_compras.js"></script>
+{% endblock %}
+
+{% block estilos %}
+{{ parent() }}
+
+{% endblock %}
