@@ -120,7 +120,7 @@ switch ($accion) {
             $productos = json_decode($_POST['productos'], true);
 
             // Revertir el stock original
-            $sql_detalle_original = "SELECT producto_id, cantidad FROM compras_detalle WHERE id_compra = ?";
+            $sql_detalle_original = "SELECT codigo_producto, cantidad FROM compras_detalle WHERE id_compra = ?";
             $stmt_detalle_original = $pdo->prepare($sql_detalle_original);
             $stmt_detalle_original->execute([$id_compra]);
             $detalle_original = $stmt_detalle_original->fetchAll(PDO::FETCH_ASSOC);
@@ -128,7 +128,7 @@ switch ($accion) {
             foreach ($detalle_original as $item) {
                 $sql_revertir_stock = "UPDATE catalogo_productos SET stock_actual = stock_actual - ? WHERE codigo_interno = ?";
                 $stmt_revertir_stock = $pdo->prepare($sql_revertir_stock);
-                $stmt_revertir_stock->execute([$item['cantidad'], $item['producto_id']]);
+                $stmt_revertir_stock->execute([$item['cantidad'], $item['id_productos']]);
             }
 
             // Eliminar detalles de la compra original
@@ -155,7 +155,7 @@ switch ($accion) {
                 $codigo_producto_final = $producto_info['codigo_interno'];
                 $precio_costo = $producto['precio_costo'] ?? 0;
                 
-                $sql_detalle = "INSERT INTO compras_detalle (compra_id, producto_id, cantidad, precio_costo, precio_unitario, subtotal, iva, descuento, unidad_medida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql_detalle = "INSERT INTO compras_detalle (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva, descuento, unidad_medida) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt_detalle = $pdo->prepare($sql_detalle);
                 $stmt_detalle->execute([
                     $id_compra,

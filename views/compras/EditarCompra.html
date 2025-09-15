@@ -112,16 +112,16 @@
 </div>
 
 {# El modal de búsqueda es el mismo, no necesita cambios #}
-{% include 'compras/buscarProductoModal.html' %} 
+{% include 'compras/buscarProductoModal.html' %}
 
 {% endblock %}
 
 {% block javascripts %}
 {{ parent() }}
+
 <script src="./js/compras/editar_compras.js"></script>
 {% endblock %}
 
 {% block estilos %}
 {{ parent() }}
-
 {% endblock %}

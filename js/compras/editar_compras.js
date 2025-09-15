@@ -262,20 +262,27 @@ $(function () {
         $('#cantidadProducto').focus().select();
     });
 
-    function renderizarTabla() {
+   function renderizarTabla() {
         let tbody = $('#tablaProductosCompra tbody');
         tbody.empty();
         let total = 0;
+
         productosCompra.forEach((p, index) => {
-            total += p.subtotal;
+            const subtotal = (p.cantidad * p.precio_unitario) || 0;
+            total += subtotal;
+            
             const fila = `
-                <tr>
+                <tr data-index="${index}">
                     <td>${p.id_productos}</td>
                     <td>${p.descripcion}</td>
-                    <td class="text-end">${p.cantidad.toFixed(2)}</td>
-                    <td class="text-end">${p.precio_unitario.toFixed(2)}</td>
+                    <td class="text-end">
+                        <input type="number" class="form-control form-control-sm text-end input-cantidad" value="${p.cantidad}" min="0.01" step="0.01" data-index="${index}">
+                    </td>
+                    <td class="text-end">
+                        <input type="number" class="form-control form-control-sm text-end input-precio" value="${p.precio_unitario.toFixed(2)}" min="0.01" step="0.01" data-index="${index}">
+                    </td>
                     <td>${p.impuesto_descripcion || 'N/A'}</td>
-                    <td class="text-end">${p.subtotal.toFixed(2)}</td>
+                    <td class="text-end subtotal-row">${subtotal.toFixed(2)}</td>
                     <td class="text-center">
                         <button type="button" class="btn btn-danger btn-sm btnEliminarProducto" data-index="${index}"><i class="fas fa-trash-alt"></i></button>
                     </td>
@@ -283,12 +290,20 @@ $(function () {
             `;
             tbody.append(fila);
         });
+
         $('#totalCompra').text(total.toFixed(2));
     }
 
-    $('#tablaProductosCompra tbody').on('click', '.btnEliminarProducto', function() {
+    // Evento para detectar cambios en la cantidad o el precio
+    $('#tablaProductosCompra tbody').on('change', '.input-cantidad, .input-precio', function() {
         const index = $(this).data('index');
-        productosCompra.splice(index, 1);
+        const cantidad = parseFloat($(`tr[data-index="${index}"] .input-cantidad`).val()) || 0;
+        const precio = parseFloat($(`tr[data-index="${index}"] .input-precio`).val()) || 0;
+
+        productosCompra[index].cantidad = cantidad;
+        productosCompra[index].precio_unitario = precio;
+        productosCompra[index].subtotal = cantidad * precio;
+
         renderizarTabla();
     });
 
