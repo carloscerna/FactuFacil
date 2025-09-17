@@ -153,12 +153,12 @@ $(function () {
                     $('#selectCondicionPago').val(compra.condicion_pago).trigger('change');
                     $('#selectPlazoPagoDTE').val(compra.plazo_pago);
                     $('[name="observaciones"]').val(compra.observaciones);
-
+    
                     productosCompra = [];
                     for (const item of detalle) {
                         const impuestoInfo = await obtenerDetalleImpuesto(item.impuesto_aplicable);
                         productosCompra.push({
-                            id_productos: item.id_detalle,
+                            id_productos: item.id_productos, // Se usa id_productos del backend
                             descripcion: item.descripcion,
                             cantidad: parseFloat(item.cantidad),
                             precio_unitario: parseFloat(item.precio_unitario),

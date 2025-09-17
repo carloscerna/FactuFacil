@@ -1,4 +1,3 @@
-{# views/compras/RegistrarCompra.html #}
 {% extends 'default_layout.html' %}
 
 {% block contenidos %}
@@ -8,145 +7,141 @@
             <h2 class="mb-0">Registrar Compra</h2>
         </div>
         <div class="card-body p-4">
-            <form id="formCompra">
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label>Número de Documento</label>
-                        <input type="text" class="form-control" name="numero_documento" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label>Tipo de Documento</label>
-                        <select class="form-select" id="selectTipoDte" name="tipo_documento" required></select>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label>Fecha de Emisión</label>
-                        <input type="date" class="form-control" name="fecha_emision" value="{{ "now"|date("Y-m-d") }}" required>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-4 mb-3">
-                        <label>Proveedor</label>
-                        <select class="form-select" id="selectProveedor" name="id_proveedores" required></select>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label>Condición de Pago</label>
-                        <select class="form-select" id="selectCondicionPago" name="condicion_pago" required></select>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                        <label>Plazo de Pago</label>
-                        <select class="form-select" id="selectPlazoPagoDTE" name="plazo_pago" disabled></select>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-12 mb-3">
-                        <label>Observaciones</label>
-                        <textarea class="form-control" name="observaciones" rows="2"></textarea>
-                    </div>
-                </div>
-                
-                <hr>
-                
-                <h5 class="mb-3">Productos de la Compra</h5>
-                <div class="row g-2">
-                    <div class="col-md-3 mb-3">
-                        <label>Código o ID de Producto</label>
-                        <div class="input-group">
-                            <input type="text" class="form-control" id="codigoProducto" placeholder="Escanee o ingrese el código">
-                            <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#buscarProductoModal">
-                                <i class="fas fa-search"></i>
-                            </button>
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="btn btn-primary me-2" id="btnManual">Registro Manual</button>
+                <button type="button" class="btn btn-info" id="btnDte">Subir DTE</button>
+            </div>
+            
+            <!-- Manual Purchase Registration Form (Visible by default) -->
+            <div id="seccionManual">
+                <form id="formCompra">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Número de Documento</label>
+                            <input type="text" class="form-control" name="numero_documento" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Tipo de Documento</label>
+                            <select class="form-select" id="selectTipoDte" name="tipo_documento" required></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Fecha de Emisión</label>
+                            <input type="date" class="form-control" name="fecha_emision" value="{{ "now"|date("Y-m-d") }}" required>
                         </div>
                     </div>
-                    <div class="col-md-3 mb-3">
-                        <label>Descripción</label>
-                        <input type="text" class="form-control" id="descripcionProducto" readonly>
-                        <input type="hidden" id="impuestoIdProducto"> {# Nuevo campo oculto para el ID de impuesto #}
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Proveedor</label>
+                            <select class="form-select" id="selectProveedor" name="id_proveedores" required></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Condición de Pago</label>
+                            <select class="form-select" id="selectCondicionPago" name="condicion_pago" required></select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Plazo de Pago</label>
+                            <select class="form-select" id="selectPlazoPagoDTE" name="plazo_pago" disabled></select>
+                        </div>
                     </div>
-                    <div class="col-md-2 mb-3">
-                        <label>Cantidad</label>
-                        <input type="number" step="0.01" class="form-control" id="cantidadProducto" value="1">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">Observaciones</label>
+                            <textarea class="form-control" name="observaciones" rows="2"></textarea>
+                        </div>
                     </div>
-                    <div class="col-md-2 mb-3">
-                        <label>Precio Unitario (con Imp.)</label>
-                        <input type="number" step="0.01" class="form-control" id="precioUnitarioProducto">
+                    
+                    <hr>
+                    
+                    <h5 class="mb-3">Productos de la Compra</h5>
+                    <div class="row g-2">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Código o ID de Producto</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="codigoProducto" placeholder="Escanee o ingrese el código">
+                                <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#buscarProductoModal">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Descripción</label>
+                            <input type="text" class="form-control" id="descripcionProducto" readonly>
+                            <input type="hidden" id="impuestoAplicableProducto">
+                            <input type="hidden" id="codigoGananciaProducto">
+                            <input type="hidden" id="precioCostoProducto">
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <label class="form-label">Cantidad</label>
+                            <input type="number" step="0.01" class="form-control" id="cantidadProducto" value="1">
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <label class="form-label">Precio Unitario (con Imp.)</label>
+                            <input type="number" step="0.01" class="form-control" id="precioUnitarioProducto">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end mb-3">
+                            <button type="button" class="btn btn-success w-100" id="btnAgregarProducto"><i class="fas fa-plus me-2"></i>Agregar</button>
+                        </div>
                     </div>
-                    <div class="col-md-2 d-flex align-items-end mb-3">
-                        <button type="button" class="btn btn-success w-100" id="btnAgregarProducto"><i class="fas fa-plus me-2"></i>Agregar</button>
-                    </div>
-                </div>
 
-                <div class="table-responsive mt-4">
-                    <table id="tablaProductosCompra" class="table table-striped table-hover table-bordered">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Descripción</th>
-                                <th>Cantidad</th>
-                                <th>Precio Unitario</th>
-                                <th>Impuesto</th> {# Nueva columna #}
-                                <th>Subtotal</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="5" class="text-end"><strong>Total de la Compra</strong></td>
-                                <td id="totalCompra" class="text-end"><strong>0.00</strong></td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-                
-                <div class="d-grid mt-4">
-                    <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar Compra</button>
-                </div>
-            </form>
+                    <div class="table-responsive mt-4">
+                        <table id="tablaProductosCompra" class="table table-striped table-hover table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Descripción</th>
+                                    <th>Cantidad</th>
+                                    <th>Precio Unitario</th>
+                                    <th>Impuesto</th>
+                                    <th>Subtotal</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="5" class="text-end"><strong>Total de la Compra</strong></td>
+                                    <td id="totalCompra" class="text-end"><strong>0.00</strong></td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i> Guardar Compra</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- DTE Upload Form (Hidden by default) -->
+            <div id="seccionDte" style="display:none;">
+                <form id="formSubirDte" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="json_file" class="form-label">Subir DTE (JSON)</label>
+                            <input type="file" class="form-control" id="json_file" name="json_file" accept=".json" required>
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end mb-3">
+                            <button type="submit" class="btn btn-info w-100" id="btnSubirDte"><i class="fas fa-upload me-2"></i>Procesar DTE</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
         </div>
     </div>
 </div>
 
-<div class="modal fade" id="buscarProductoModal" tabindex="-1" aria-labelledby="buscarProductoModalLabel">
-    <div class="modal-dialog modal-xl"> {# Modal más grande para DataTable #}
-        <div class="modal-content rounded-4 shadow-lg">
-            <div class="modal-header bg-primary text-white rounded-top-4">
-                <h5 class="modal-title" id="buscarProductoModalLabel">Buscar y Seleccionar Producto</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-4">
-                {# Eliminamos el input de búsqueda manual, DataTable se encargará #}
-                <div class="table-responsive">
-                    <table id="tablaBusquedaProductos" class="table table-striped table-hover table-bordered w-100">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Código Interno</th>
-                                <th>Descripción</th>
-                                <th>Precio Costo</th>
-                                <th>Impuesto ID</th> {# Mostrar el ID del Impuesto para referencia #}
-                                <th>Acción</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{% include 'compras/buscarProductoModal.html' %} 
+
 {% endblock %}
 
 {% block javascripts %}
 {{ parent() }}
-<script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
 <script src="./js/compras/compras.js"></script>
 {% endblock %}
 
 {% block estilos %}
 {{ parent() }}
-<link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
 {% endblock %}

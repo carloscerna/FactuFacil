@@ -169,7 +169,7 @@ $(function () {
                         $('#direccion').val(proveedor.direccion);
                         $('#dui').val(proveedor.dui);
                         $('#nit').val(proveedor.nit);
-                        $('#numero_registro').val(proveedor.numero_registro);
+                        $('#numero_registro').val(proveedor.codigo_giro);
                         $('#telefono_celular').val(proveedor.telefono_celular);
                         $('#telefono_residencia').val(proveedor.telefono_residencia);
                         $('#correo_electronico').val(proveedor.correo_electronico);

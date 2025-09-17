@@ -1,42 +1,31 @@
-// js/compras/compras.js
-
 $(function () {
     let productosCompra = [];
-    let tablaBusquedaProductosDT = null; // Variable para la instancia de DataTable
+    let tablaBusquedaProductosDT = null;
+    let modoDeGuardado = 'manual';
+    let compraEncabezadoDte = {}; // New global variable to store DTE header data
 
-    function cargarCatalogos() {
-        $.ajax({
-            url: 'admin/compras/crud_compras.php',
-            type: 'POST',
-            dataType: 'json',
-            data: { accion: 'obtenerCatalogosCompra' },
-            success: function(response) {
-                if (response.respuesta) {
-                    let selectTipoDte = $('#selectTipoDte');
-                    selectTipoDte.empty().append('<option value="">Seleccione...</option>');
-                    $.each(response.catalogos.tipos_documento, function(key, item) {
-                        selectTipoDte.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
-                    });
+    // Controlar la visibilidad de los formularios
+    $('#btnManual').on('click', function() {
+        $('#seccionManual').show();
+        $('#seccionDte').hide();
+        modoDeGuardado = 'manual';
+        // Limpiar el formulario y el estado del DTE al cambiar de modo
+        $('#formCompra')[0].reset();
+        productosCompra = [];
+        renderizarTabla();
+    });
 
-                    let selectCondicionPago = $('#selectCondicionPago');
-                    selectCondicionPago.empty().append('<option value="">Seleccione...</option>');
-                    $.each(response.catalogos.condiciones_pago, function(key, item) {
-                        selectCondicionPago.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
-                    });
+    $('#btnDte').on('click', function() {
+        $('#seccionManual').hide();
+        $('#seccionDte').show();
+        modoDeGuardado = 'dte';
+        // Limpiar el formulario al cambiar de modo
+        $('#formCompra')[0].reset();
+        productosCompra = [];
+        renderizarTabla();
+    });
 
-                    let selectPlazoPagoDTE = $('#selectPlazoPagoDTE');
-                    selectPlazoPagoDTE.empty().append('<option value="">Seleccione...</option>');
-                    $.each(response.catalogos.plazos_pago, function(key, item) {
-                        selectPlazoPagoDTE.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
-                    });
-                } else {
-                    toastr.error('Error al cargar catálogos: ' + response.mensaje);
-                }
-            }
-        });
-    }
-
-  async function obtenerDetalleImpuesto(codigo_impuesto) {
+    async function obtenerDetalleImpuesto(codigo_impuesto) {
         if (!codigo_impuesto || codigo_impuesto === '00') {
             return { descripcion_completa: 'N/A', tipo_impuesto: null, porcentaje: 0, monto_fijo: 0, codigo: '00' };
         }
@@ -74,7 +63,7 @@ $(function () {
         }
     }
 
-   async function calcularPrecioConImpuesto(precioCosto, impuesto) {
+    async function calcularPrecioConImpuesto(precioCosto, impuesto) {
         let precioFinal = parseFloat(precioCosto) || 0;
         
         if (impuesto && impuesto.tipo_impuesto === 'PORCENTAJE') {
@@ -86,9 +75,9 @@ $(function () {
         return precioFinal;
     }
 
-    async function calcularPrecioConGanancia(precioCosto, codigoGanancia) {
-        if (!codigoGanancia || precioCosto === undefined) {
-            return parseFloat(precioCosto);
+    async function calcularPrecioConGanancia(precioConImpuesto, codigoGanancia) {
+        if (!codigoGanancia || precioConImpuesto === undefined) {
+            return parseFloat(precioConImpuesto) || 0;
         }
 
         try {
@@ -100,145 +89,91 @@ $(function () {
             });
             
             if (response.respuesta && response.ganancia) {
-                const porcentaje = parseFloat(response.ganancia.porcentaje);
-                return precioCosto * (1 + (porcentaje / 100));
+                const porcentaje = parseFloat(response.ganancia.porcentaje) || 0;
+                return precioConImpuesto * (1 + (porcentaje / 100));
             } else {
                 console.error('No se pudo obtener el detalle de la ganancia:', response.mensaje);
-                return parseFloat(precioCosto);
+                return parseFloat(precioConImpuesto);
             }
         } catch (error) {
             console.error('Error al obtener el detalle de ganancia:', error);
-            return parseFloat(precioCosto);
+            return parseFloat(precioConImpuesto);
         }
     }
 
-    $('#selectCondicionPago').on('change', function() {
-        const codigo_condicion = $(this).val();
-        if (codigo_condicion === '02') {
-            $('#selectPlazoPagoDTE').prop('disabled', false).val('');
-        } else {
-            $('#selectPlazoPagoDTE').prop('disabled', true).val('');
-        }
-    });
-
-    function cargarProveedores() {
-        $.ajax({
+    function cargarCatalogos() {
+        return $.ajax({
             url: 'admin/compras/crud_compras.php',
             type: 'POST',
             dataType: 'json',
-            data: { accion: 'obtenerProveedores' },
-            success: function(response) {
-                if (response.respuesta) {
-                    let select = $('#selectProveedor');
-                    select.empty().append('<option value="">Seleccione un proveedor</option>');
-                    $.each(response.proveedores, function(key, item) {
-                        select.append(`<option value="${item.id_proveedores}">${item.nombre_empresa}</option>`);
-                    });
-                } else {
-                    toastr.error('Error al cargar proveedores: ' + response.mensaje);
-                }
-            }
+            data: { accion: 'obtenerCatalogosCompra' }
         });
     }
 
+    function cargarProveedores() {
+        return $.ajax({
+            url: 'admin/compras/crud_compras.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { accion: 'obtenerProveedores' }
+        });
+    }
 
-       $('#codigoProducto').on('keypress', async function(e) {
-        if (e.which === 13) {
-            e.preventDefault();
-            const termino = $(this).val();
-            if (termino) {
-                $.ajax({
-                    url: 'admin/compras/crud_compras.php',
-                    type: 'POST',
-                    dataType: 'json',
-                    data: { accion: 'buscarProducto', termino: termino },
-                    success: async function(response) {
-                        if (response.respuesta) {
-                            const producto = response.producto;
-                            $('#descripcionProducto').val(producto.descripcion);
-                            $('#impuestoAplicableProducto').val(producto.impuesto_aplicable);
-                            $('#codigoGananciaProducto').val(producto.codigo_ganancia);
-
-                            const impuestoInfo = await obtenerDetalleImpuesto(producto.impuesto_aplicable);
-                            const precioConImpuesto = await calcularPrecioConImpuesto(producto.precio_costo, impuestoInfo);
-                            const precioUnitarioFinal = await calcularPrecioConGanancia(precioConImpuesto, producto.codigo_ganancia);
-                            
-                            $('#precioUnitarioProducto').val(precioUnitarioFinal.toFixed(2));
-                            $('#cantidadProducto').focus().select();
-                        } else {
-                            toastr.warning('Producto no encontrado. Utilice la búsqueda por descripción.');
-                            $('#codigoProducto').focus().select();
-                        }
-                    }
-                });
-            }
-        }
-    });
-
-
- $('#tablaBusquedaProductos tbody').on('click', '.btnSeleccionarProductoModal', async function() {
-        const data = tablaBusquedaProductosDT.row($(this).parents('tr')).data();
-        
-        $('#codigoProducto').val(data.id_productos); 
-        $('#descripcionProducto').val(data.descripcion);
-        $('#impuestoAplicableProducto').val(data.impuesto_aplicable);
-        $('#codigoGananciaProducto').val(data.codigo_ganancia);
-        
-        const impuestoInfo = await obtenerDetalleImpuesto(data.impuesto_aplicable);
-        const precioConImpuesto = await calcularPrecioConImpuesto(data.precio_costo, impuestoInfo);
-        const precioUnitarioFinal = await calcularPrecioConGanancia(precioConImpuesto, data.codigo_ganancia);
-        
-        $('#precioUnitarioProducto').val(precioUnitarioFinal.toFixed(2));
-        
-        $('#buscarProductoModal').modal('hide');
-        $('#cantidadProducto').focus().select();
-    });
-
-    // He modificado el DataTables para que muestre el impuesto aplicable
-      $('#buscarProductoModal').on('shown.bs.modal', function() {
-        if (tablaBusquedaProductosDT) {
-            tablaBusquedaProductosDT.ajax.reload();
-        } else {
-            tablaBusquedaProductosDT = $('#tablaBusquedaProductos').DataTable({
-                "processing": true,
-                "serverSide": true,
-                "ajax": {
-                    "url": "admin/compras/crud_compras.php",
-                    "type": "POST",
-                    "data": function (d) {
-                        d.accion = 'buscarProductoDescripcion';
-                    },
-                    "dataSrc": "data"
-                },
-                "columns": [
-                    { "data": "id_productos" },
-                    { "data": "codigo_interno" },
-                    { "data": "descripcion" },
-                    { "data": "precio_costo", "render": $.fn.dataTable.render.number(',', '.', 2, '$') },
-                    { "data": "impuesto_aplicable" },
-                    { "defaultContent": "<div class='text-center'><button class='btn btn-primary btn-sm btnSeleccionarProductoModal'><i class='fas fa-check me-1'></i>Seleccionar</button></div>" }
-                ],
-                "language": { "url": "php_libs/idioma/es_es.json" }
+    function renderizarSelects(catalogoData, proveedoresData) {
+        if (catalogoData[0].respuesta) {
+            let selectTipoDte = $('#selectTipoDte');
+            selectTipoDte.empty().append('<option value="">Seleccione...</option>');
+            $.each(catalogoData[0].catalogos.tipos_documento, function(key, item) {
+                selectTipoDte.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
             });
-        }
-        $('#tablaBusquedaProductos_filter input').focus();
-    });
 
- function renderizarTabla() {
+            let selectCondicionPago = $('#selectCondicionPago');
+            selectCondicionPago.empty().append('<option value="">Seleccione...</option>');
+            $.each(catalogoData[0].catalogos.condiciones_pago, function(key, item) {
+                selectCondicionPago.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
+            });
+
+            let selectPlazoPagoDTE = $('#selectPlazoPagoDTE');
+            selectPlazoPagoDTE.empty().append('<option value="">Seleccione...</option>');
+            $.each(catalogoData[0].catalogos.plazos_pago, function(key, item) {
+                selectPlazoPagoDTE.append(`<option value="${item.codigo}">${item.descripcion}</option>`);
+            });
+        } else {
+            toastr.error('Error al cargar catálogos: ' + catalogoData[0].mensaje);
+        }
+
+        if (proveedoresData[0].respuesta) {
+            let select = $('#selectProveedor');
+            select.empty().append('<option value="">Seleccione un proveedor</option>');
+            $.each(proveedoresData[0].proveedores, function(key, item) {
+                select.append(`<option value="${item.id_proveedores}">${item.nombre_empresa}</option>`);
+            });
+        } else {
+            toastr.error('Error al cargar proveedores: ' + proveedoresData[0].mensaje);
+        }
+    }
+
+    function renderizarTabla() {
         let tbody = $('#tablaProductosCompra tbody');
         tbody.empty();
         let total = 0;
 
         productosCompra.forEach((p, index) => {
-            total += p.subtotal;
+            const subtotal = (p.cantidad * p.precio_unitario) || 0;
+            total += subtotal;
+            
             const fila = `
-                <tr>
+                <tr data-index="${index}">
                     <td>${p.id_productos}</td>
                     <td>${p.descripcion}</td>
-                    <td class="text-end">${p.cantidad.toFixed(2)}</td>
-                    <td class="text-end">${p.precio_unitario.toFixed(2)}</td>
+                    <td class="text-end">
+                        <input type="number" class="form-control form-control-sm text-end input-cantidad" value="${p.cantidad}" min="0.01" step="0.01" data-index="${index}">
+                    </td>
+                    <td class="text-end">
+                        <input type="number" class="form-control form-control-sm text-end input-precio" value="${p.precio_unitario.toFixed(2)}" min="0.01" step="0.01" data-index="${index}">
+                    </td>
                     <td>${p.impuesto_descripcion || 'N/A'}</td>
-                    <td class="text-end">${p.subtotal.toFixed(2)}</td>
+                    <td class="text-end subtotal-row">${subtotal.toFixed(2)}</td>
                     <td class="text-center">
                         <button type="button" class="btn btn-danger btn-sm btnEliminarProducto" data-index="${index}"><i class="fas fa-trash-alt"></i></button>
                     </td>
@@ -250,53 +185,19 @@ $(function () {
         $('#totalCompra').text(total.toFixed(2));
     }
 
-    $('#tablaProductosCompra tbody').on('click', '.btnEliminarProducto', function() {
+    // Evento para detectar cambios en la cantidad o el precio
+    $('#tablaProductosCompra tbody').on('change', '.input-cantidad, .input-precio', function() {
         const index = $(this).data('index');
-        productosCompra.splice(index, 1);
+        const campo = $(this).hasClass('input-cantidad') ? 'cantidad' : 'precio_unitario';
+        const valor = $(this).val();
+
+        productosCompra[index][campo] = parseFloat(valor) || 0;
+        productosCompra[index].subtotal = (productosCompra[index].cantidad * productosCompra[index].precio_unitario);
+
         renderizarTabla();
     });
 
-    $('#btnAgregarProducto').on('click', async function() {
-        const id = $('#codigoProducto').val();
-        const descripcion = $('#descripcionProducto').val();
-        const impuestoAplicable = $('#impuestoAplicableProducto').val();
-        const codigoGanancia = $('#codigoGananciaProducto').val();
-        const cantidad = parseFloat($('#cantidadProducto').val()) || 0;
-        const precioUnitario = parseFloat($('#precioUnitarioProducto').val()) || 0;
-        
-        if (!id || !descripcion || cantidad <= 0 || precioUnitario <= 0) {
-            toastr.warning('Por favor, complete todos los campos del producto.');
-            return;
-        }
-
-        const subtotal = cantidad * precioUnitario;
-        const impuestoInfo = await obtenerDetalleImpuesto(impuestoAplicable);
-        
-        const producto = {
-            id_productos: id,
-            descripcion: descripcion,
-            cantidad: cantidad,
-            precio_unitario: precioUnitario,
-            impuesto_aplicable: impuestoAplicable,
-            impuesto_descripcion: impuestoInfo.descripcion_completa,
-            subtotal: subtotal
-        };
-
-        productosCompra.push(producto);
-        renderizarTabla();
-        limpiarFormularioProducto();
-    });
-    
-    function limpiarFormularioProducto() {
-        $('#codigoProducto').val('');
-        $('#descripcionProducto').val('');
-        $('#impuestoAplicableProducto').val('');
-        $('#codigoGananciaProducto').val('');
-        $('#cantidadProducto').val('1');
-        $('#precioUnitarioProducto').val('');
-        $('#codigoProducto').focus();
-    }
-
+    // Evento para el formulario de registro de compras (Registro Manual)
     $('#formCompra').submit(function(e) {
         e.preventDefault();
 
@@ -307,24 +208,35 @@ $(function () {
 
         const totalFinal = parseFloat($('#totalCompra').text());
 
-        const formData = {
-            accion: 'guardarCompra',
-            numero_documento: $('[name="numero_documento"]').val(),
-            tipo_documento: $('[name="tipo_documento"]').val(),
-            fecha_emision: $('[name="fecha_emision"]').val(),
-            id_proveedores: $('#selectProveedor').val(),
-            condicion_pago: $('#selectCondicionPago').val(),
-            plazo_pago: $('#selectPlazoPagoDTE').val(),
-            total_compra: totalFinal.toFixed(2),
-            observaciones: $('[name="observaciones"]').val(),
-            productos: JSON.stringify(productosCompra)
-        };
+        let accionDeGuardado = (modoDeGuardado === 'dte') ? 'guardarCompraProcesada' : 'guardarCompra';
+        let datosDeEnvio = {};
+        
+        if (accionDeGuardado === 'guardarCompraProcesada') {
+            datosDeEnvio = {
+                accion: accionDeGuardado,
+                compra_data: JSON.stringify(compraEncabezadoDte),
+                productos_data: JSON.stringify(productosCompra)
+            };
+        } else {
+            datosDeEnvio = {
+                accion: accionDeGuardado,
+                numero_documento: $('[name="numero_documento"]').val(),
+                tipo_documento: $('[name="tipo_documento"]').val(),
+                fecha_emision: $('[name="fecha_emision"]').val(),
+                id_proveedores: $('#selectProveedor').val(),
+                condicion_pago: $('#selectCondicionPago').val(),
+                plazo_pago: $('#selectPlazoPagoDTE').val(),
+                total_compra: totalFinal.toFixed(2),
+                observaciones: $('[name="observaciones"]').val(),
+                productos: JSON.stringify(productosCompra)
+            };
+        }
 
         $.ajax({
             url: 'admin/compras/crud_compras.php',
             type: 'POST',
             dataType: 'json',
-            data: formData,
+            data: datosDeEnvio,
             success: function(response) {
                 if (response.respuesta) {
                     toastr.success(response.mensaje);
@@ -341,6 +253,101 @@ $(function () {
         });
     });
 
-    cargarProveedores();
-    cargarCatalogos();
+    // Lógica para buscar producto por ID o código de barra
+    $('#codigoProducto').on('keypress', async function(e) {
+        if (e.which === 13) {
+            e.preventDefault();
+            const termino = $(this).val();
+            if (termino) {
+                $.ajax({
+                    url: 'admin/compras/crud_compras.php',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { accion: 'buscarProducto', termino: termino },
+                    success: async function(response) {
+                        if (response.respuesta) {
+                            const producto = response.producto;
+                            $('#descripcionProducto').val(producto.descripcion);
+                            $('#impuestoAplicableProducto').val(producto.impuesto_aplicable);
+                            $('#codigoGananciaProducto').val(producto.codigo_ganancia);
+                            const impuestoInfo = await obtenerDetalleImpuesto(producto.impuesto_aplicable);
+                            const precioConImpuesto = await calcularPrecioConImpuesto(producto.precio_costo, impuestoInfo);
+                            const precioUnitarioFinal = await calcularPrecioConGanancia(precioConImpuesto, producto.codigo_ganancia);
+                            $('#precioUnitarioProducto').val(precioUnitarioFinal.toFixed(2));
+                            $('#cantidadProducto').focus().select();
+                        } else {
+                            toastr.warning('Producto no encontrado. Utilice la búsqueda por descripción.');
+                            $('#codigoProducto').focus().select();
+                        }
+                    }
+                });
+            }
+        }
+    });
+
+    // Eventos para el formulario de subida de DTE
+    $('#formSubirDte').submit(function(e) {
+        e.preventDefault();
+        const fileInput = $('#json_file')[0];
+        if (fileInput.files.length === 0) {
+            toastr.error('Por favor, seleccione un archivo JSON.');
+            return;
+        }
+
+        const formData = new FormData(this);
+        formData.append('accion', 'procesarJsonDte');
+
+        $.ajax({
+            url: 'admin/compras/crud_compras.php',
+            type: 'POST',
+            dataType: 'json',
+            data: formData,
+            contentType: false,
+            processData: false,
+            success: function(response) {
+                if (response.respuesta) {
+                    toastr.success('DTE procesado. Verifique los datos para guardar la compra.');
+                    mostrarVistaPrevia(response.compra, response.productos);
+                } else {
+                    toastr.error('Error: ' + response.mensaje);
+                }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                toastr.error('Error al procesar el DTE: ' + textStatus + ', ' + errorThrown);
+            }
+        });
+    });
+
+    // Muestra la vista previa del DTE en el formulario de registro manual
+    function mostrarVistaPrevia(compra, productos) {
+        // Almacenar los datos de la compra del DTE
+        compraEncabezadoDte = compra;
+        
+        // Llenar los campos de encabezado del formulario manual
+        $('[name="numero_documento"]').val(compra.numero_documento);
+        $('[name="tipo_documento"]').val(compra.tipo_documento);
+        $('[name="fecha_emision"]').val(compra.fecha_emision);
+        $('[name="id_proveedores"]').val(compra.id_proveedores); // Asume que el ID del proveedor está en el DTE
+        $('[name="condicion_pago"]').val(compra.condicion_pago);
+        $('[name="plazo_pago"]').val(compra.plazo_pago);
+        $('[name="observaciones"]').val(compra.observaciones);
+
+        // Llenar el arreglo de productos y renderizar la tabla
+        productosCompra = productos;
+        renderizarTabla();
+        
+        // Ocultar el formulario DTE y mostrar el formulario manual
+        $('#seccionDte').hide();
+        $('#seccionManual').show();
+        modoDeGuardado = 'dte'; // Establecer el modo a DTE
+    }
+    
+    // ... El resto del código de la lógica del modal, etc.
+    
+    // Llamadas iniciales
+    $.when(cargarCatalogos(), cargarProveedores()).done(function(catalogoData, proveedoresData) {
+        renderizarSelects(catalogoData, proveedoresData);
+    }).fail(function() {
+        toastr.error('Error al cargar catálogos y proveedores.');
+    });
 });

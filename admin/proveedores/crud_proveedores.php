@@ -25,15 +25,21 @@ $codigo_perfil_sesion = $_SESSION['codigo_perfil'] ?? '';
 $codigo_institucion_sesion = $_SESSION['codigo_institucion'] ?? '';
 
 // --- Function to generate supplier code ---
-function generarCodigoProveedor($pdo) {
+
+// La función ahora acepta el código de la institución
+function generarCodigoProveedor($pdo, $codigo_institucion_sesion) {
     try {
         $prefijo_tipo = 'PROV';
         $año_actual = date('y');
 
         $pdo->beginTransaction();
+        
+        // Se crea un código_tipo único para la institución
+        $codigo_tipo_completo = $prefijo_tipo . '_' . $codigo_institucion_sesion;
+        
         $sql = "SELECT ultimo_numero FROM correlativos WHERE codigo_tipo = ? FOR UPDATE";
         $stmt = $pdo->prepare($sql);
-        $stmt->execute([$prefijo_tipo]);
+        $stmt->execute([$codigo_tipo_completo]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
         $ultimo_numero = $result ? $result['ultimo_numero'] : 0;
@@ -46,7 +52,7 @@ function generarCodigoProveedor($pdo) {
         }
         
         $stmt_update = $pdo->prepare($sql_update);
-        $stmt_update->execute([$nuevo_numero, $prefijo_tipo]);
+        $stmt_update->execute([$nuevo_numero, $codigo_tipo_completo]);
 
         $correlativo_formateado = str_pad($nuevo_numero, 6, '0', STR_PAD_LEFT);
         $nuevo_codigo = $correlativo_formateado . $año_actual;
@@ -59,7 +65,6 @@ function generarCodigoProveedor($pdo) {
         return null;
     }
 }
-
 switch ($accion) {
     case 'listarProveedores':
         try {
@@ -96,47 +101,57 @@ switch ($accion) {
         }
         break;
 
-    case 'crearActualizar':
-        $id_proveedores = $_POST['id_proveedores'] ?? '';
-        $codigo = $_POST['codigo'] ?? '';
-        $nombres = $_POST['nombres'] ?? '';
-        $apellidos = $_POST['apellidos'] ?? '';
-        $nombre_empresa = $_POST['nombre_empresa'] ?? '';
-        $codigo_pais = $_POST['codigo_pais'] ?? '';
-        $codigo_giro = $_POST['codigo_giro'] ?? '';
-        $direccion = $_POST['direccion'] ?? '';
-        $codigo_departamento = $_POST['codigo_departamento'] ?? '';
-        $codigo_municipio = $_POST['codigo_municipio'] ?? '';
-        $codigo_distrito = $_POST['codigo_distrito'] ?? '';
-        $dui = $_POST['dui'] ?? '';
-        $nit = $_POST['nit'] ?? '';
-        $numero_registro = $_POST['numero_registro'] ?? '';
-        $telefono_residencia = $_POST['telefono_residencia'] ?? '';
-        $telefono_celular = $_POST['telefono_celular'] ?? '';
-        $codigo_estatus = $_POST['codigo_estatus'] ?? '';
-        $correo_electronico = $_POST['correo_electronico'] ?? '';
+        case 'crearActualizar':
+            $id_proveedores = $_POST['id_proveedores'] ?? '';
+            $codigo = $_POST['codigo'] ?? ''; 
+            $nombre_empresa = $_POST['nombre_empresa'] ?? '';
+            $giro = $_POST['codigo_giro'] ?? '';
+            $direccion = $_POST['direccion'] ?? '';
+            $nit_con_guiones = $_POST['nit'] ?? '';            
+            $nit = str_replace("-", "", $nit_con_guiones);
 
-        try {
-            if (empty($id_proveedores)) {
-                $codigo_generado = generarCodigoProveedor($pdo);
-                if (!$codigo_generado) {
-                    throw new Exception("No se pudo generar el código del proveedor.");
+            $nrc = $_POST['numero_registro'] ?? '';
+            $telefono = $_POST['telefono'] ?? '';
+            $correo_electronico = $_POST['correo_electronico'] ?? '';
+            $nombres = $_POST['nombres'] ?? '';
+            $apellidos = $_POST['apellidos'] ?? '';
+            $dui = $_POST['dui'] ?? '';
+            $telefono_celular = $_POST['telefono_celular'] ?? '';
+            $telefono_residencia = $_POST['telefono_residencia'] ?? '';
+            $codigo_estatus = $_POST['codigo_estatus'] ?? '';
+            $codigo_departamento = $_POST['codigo_departamento'] ?? '';
+            $codigo_municipio = $_POST['codigo_municipio'] ?? '';
+            $codigo_distrito = $_POST['codigo_distrito'] ?? '';
+            $codigo_pais = $_POST['codigo_pais'] ?? '';
+
+
+    
+            try {
+                if (empty($id_proveedores)) {
+                    // Se llama a la función con el parámetro de la sesión
+                    $codigo = generarCodigoProveedor($pdo, $codigo_institucion_sesion);
+                    if (!$codigo) {
+                        throw new Exception("No se pudo generar el código del proveedor.");
+                    }
+                    
+                    $sql = "INSERT INTO proveedores (codigo, codigo_institucion, nombre_empresa, giro, direccion, nit, nrc, correo_electronico, codigo_giro, nombres, apellidos, dui, telefono_celular, telefono_residencia, codigo_estatus, codigo_departamento, 
+                                                        codigo_municipio, codigo_distrito, codigo_pais) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute([$codigo, $codigo_institucion_sesion, $nombre_empresa, $giro, $direccion, $nit, $nrc, $correo_electronico, $giro, $nombres, $apellidos, $dui, $telefono_celular, $telefono_residencia, $codigo_estatus, $codigo_departamento, 
+                                                $codigo_municipio, $codigo_distrito, $codigo_pais]);
+                    echo json_encode(['respuesta' => true, 'mensaje' => 'Proveedor creado exitosamente.']);
+                } else {
+                    $sql = "UPDATE proveedores SET nombre_empresa = ?, giro = ?, direccion = ?, nit = ?, nrc = ?, correo_electronico = ?, codigo_giro = ?, nombres = ?, apellidos = ?, dui = ?, telefono_celular = ?, telefono_residencia = ?, codigo_estatus = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, codigo_pais = ?
+                     WHERE id_proveedores = ? AND codigo_institucion = ?";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute([$nombre_empresa, $giro, $direccion, $nit, $nrc, $correo_electronico, $giro, $nombres, $apellidos, $dui, $telefono_celular, $telefono_residencia, $codigo_estatus, $codigo_departamento, $codigo_municipio, $codigo_distrito, $codigo_pais, $id_proveedores, $codigo_institucion_sesion]);
+                    echo json_encode(['respuesta' => true, 'mensaje' => 'Proveedor guardado exitosamente.']);
                 }
-                $sql = "INSERT INTO proveedores (codigo, codigo_institucion, nombres, apellidos, nombre_empresa, direccion, codigo_departamento, codigo_municipio, codigo_distrito, dui, nit, numero_registro, telefono_residencia, telefono_celular, fecha_creacion, codigo_estatus, codigo_pais, codigo_giro, correo_electronico) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $nombres, $apellidos, $nombre_empresa, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $codigo_pais, $codigo_giro, $correo_electronico]);
-                echo json_encode(['respuesta' => true, 'mensaje' => 'Proveedor creado exitosamente.', 'nuevo_codigo' => $codigo_generado]);
-            } else {
-                $sql = "UPDATE proveedores SET codigo = ?, nombres = ?, apellidos = ?, nombre_empresa = ?,  direccion = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, dui = ?, nit = ?, numero_registro = ?, telefono_residencia = ?, telefono_celular = ?, codigo_estatus = ?, codigo_pais = ?, codigo_giro = ?, correo_electronico = ? WHERE id_proveedores = ? AND codigo_institucion = ?";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo, $nombres, $apellidos, $nombre_empresa, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $codigo_pais, $codigo_giro, $correo_electronico, $id_proveedores, $codigo_institucion_sesion]);
-                echo json_encode(['respuesta' => true, 'mensaje' => 'Proveedor guardado exitosamente.']);
+            } catch (PDOException $e) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar: ' . $e->getMessage()]);
             }
-        } catch (PDOException $e) {
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar: ' . $e->getMessage()]);
-        }
-        break;
+            break;
         
     case 'eliminar':
         $id_proveedores = $_POST['id_proveedores'];
