@@ -245,96 +245,119 @@ switch ($accion) {
     
         
         case 'guardarCompraProcesada':
-            $pdo->beginTransaction();
-            try {
-                $compra_data = json_decode($_POST['compra_data'], true);
-                $productos_data = json_decode($_POST['productos_data'], true);
-    
-                // Validar que el proveedor exista
-                $sql_proveedor = "SELECT id_proveedores FROM proveedores WHERE nit = ? AND codigo_institucion = ?";
-                $stmt_proveedor = $pdo->prepare($sql_proveedor);
-                $stmt_proveedor->execute([$compra_data['emisor_nit'], $codigo_institucion_sesion]);
-                $proveedor_id = $stmt_proveedor->fetchColumn();
-    
-                if (!$proveedor_id) {
-                    // Si no existe, lo crea
-                    $codigo_proveedor_generado = generarCodigoProveedor($pdo, $codigo_institucion_sesion);
-                    if (strpos($codigo_proveedor_generado, 'Error') !== false) {
-                         throw new Exception("No se pudo generar el código para el nuevo proveedor. Motivo: " . $codigo_proveedor_generado);
-                    }
-                    $sql_insert_proveedor = "INSERT INTO proveedores (codigo_institucion, codigo, nit, nombre_empresa) VALUES (?, ?, ?, ?)";
-                    $stmt_insert_proveedor = $pdo->prepare($sql_insert_proveedor);
-                    $stmt_insert_proveedor->execute([$codigo_institucion_sesion, $codigo_proveedor_generado, $compra_data['emisor_nit'], $compra_data['emisor_nombre']]);
-                    $proveedor_id = $pdo->lastInsertId('proveedores_id_proveedores_seq');
-                }
-    
-                // Insertar la cabecera de la compra
-                $sql_cabecera = "INSERT INTO compras_cabecera (codigo_institucion, numero_documento, tipo_documento, fecha_emision, id_proveedores, condicion_pago, total_compra, observaciones, total_iva, total_descuento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                $stmt_cabecera = $pdo->prepare($sql_cabecera);
-                $stmt_cabecera->execute([
-                    $codigo_institucion_sesion,
-                    $compra_data['numero_control'],
-                    $compra_data['tipo_dte'],
-                    $compra_data['fecha_emision'],
-                    $proveedor_id,
-                    $compra_data['tipo_operacion'],
-                    $compra_data['total_pagar'],
-                    $compra_data['observaciones'],
-                    $compra_data['total_iva'],
-                    $compra_data['total_descuento']
-                ]);
-                $id_compra = $pdo->lastInsertId('compras_cabecera_id_compra_seq');
-    
-                // Insertar los productos y actualizar el catálogo
-                foreach ($productos_data as $producto) {
-                    // Si el producto no estaba en el catálogo, se crea
-                    if (empty($producto['id_productos'])) {
-                            // si no trae categoría, le asignamos una por defecto
-                                if (empty($producto['codigo_categoria'])) {
-                                    $producto['codigo_categoria'] = 'GEN'; // <-- categoría genérica
-                                }
-                        $codigo_producto_generado = generarCodigoProducto($pdo, $producto['codigo_categoria'], $codigo_institucion_sesion);
-                        $sql_insert_producto = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, descripcion, precio_costo, impuesto_aplicable, unidad_medida, codigo_proveedor) VALUES (?, ?, ?, ?, ?, ?, ?)";
-                        $stmt_insert_producto = $pdo->prepare($sql_insert_producto);
-                        $stmt_insert_producto->execute([
-                            $codigo_producto_generado, 
-                            $codigo_institucion_sesion, 
-                            $producto['descripcion'], 
-                            $producto['precio_costo'], 
-                            $producto['impuesto_aplicable'], 
-                            $producto['unidad_medida'],
-                            $producto['codigo_proveedor']
-                        ]);
-                        $producto['id_productos'] = $pdo->lastInsertId('productos_id_productos_seq');
-                    } else {
-                        // Si ya existe, se actualiza el precio de costo
-                        $sql_update_producto = "UPDATE catalogo_productos SET precio_costo = ? WHERE id_productos = ?";
-                        $stmt_update_producto = $pdo->prepare($sql_update_producto);
-                        $stmt_update_producto->execute([$producto['precio_costo'], $producto['id_productos']]);
-                    }
-                    
-                    // Insertar el detalle de la compra
-                    $sql_detalle = "INSERT INTO compras_detalle (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva, descuento) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-                    $stmt_detalle = $pdo->prepare($sql_detalle);
-                    $stmt_detalle->execute([
-                        $id_compra,
-                        $producto['codigo_interno'],
-                        $producto['cantidad'],
-                        $producto['precio_costo'],
-                        $producto['precio_unitario'],
-                        $producto['subtotal'],
-                        $producto['iva'],
-                        $producto['descuento']
-                    ]);
-                }
-                
-                $pdo->commit();
-                echo json_encode(['respuesta' => true, 'mensaje' => 'Compra guardada exitosamente.', 'id_compra' => $id_compra]);
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar la compra: ' . $e->getMessage() . $codigo_producto_generado]);
+    $pdo->beginTransaction();
+    try {
+        $compra_data = json_decode($_POST['compra_data'], true);
+        $productos_data = json_decode($_POST['productos_data'], true);
+
+        // Validar que el proveedor exista
+        $sql_proveedor = "SELECT id_proveedores FROM proveedores WHERE nit = ? AND codigo_institucion = ?";
+        $stmt_proveedor = $pdo->prepare($sql_proveedor);
+        $stmt_proveedor->execute([$compra_data['emisor_nit'], $codigo_institucion_sesion]);
+        $proveedor_id = $stmt_proveedor->fetchColumn();
+
+        if (!$proveedor_id) {
+            // Si no existe, lo crea
+            $codigo_proveedor_generado = generarCodigoProveedor($pdo, $codigo_institucion_sesion);
+            if (strpos($codigo_proveedor_generado, 'Error') !== false) {
+                 throw new Exception("No se pudo generar el código para el nuevo proveedor. Motivo: " . $codigo_proveedor_generado);
             }
-            break;
+            $sql_insert_proveedor = "INSERT INTO proveedores (codigo_institucion, codigo, nit, nombre_empresa) VALUES (?, ?, ?, ?)";
+            $stmt_insert_proveedor = $pdo->prepare($sql_insert_proveedor);
+            $stmt_insert_proveedor->execute([$codigo_institucion_sesion, $codigo_proveedor_generado, $compra_data['emisor_nit'], $compra_data['emisor_nombre']]);
+            $proveedor_id = $pdo->lastInsertId('proveedores_id_proveedores_seq');
+        }
+
+        // Insertar cabecera compra
+        $sql_cabecera = "INSERT INTO compras_cabecera (codigo_institucion, numero_documento, tipo_documento, fecha_emision, id_proveedores, condicion_pago, total_compra, observaciones, total_iva, total_descuento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt_cabecera = $pdo->prepare($sql_cabecera);
+        $stmt_cabecera->execute([
+            $codigo_institucion_sesion,
+            $compra_data['numero_control'],
+            $compra_data['tipo_dte'],
+            $compra_data['fecha_emision'],
+            $proveedor_id,
+            $compra_data['tipo_operacion'],
+            $compra_data['total_pagar'],
+            $compra_data['observaciones'],
+            $compra_data['total_iva'],
+            $compra_data['total_descuento']
+        ]);
+        $id_compra = $pdo->lastInsertId('compras_cabecera_id_compra_seq');
+
+        // Procesar productos
+        foreach ($productos_data as $producto) {
+            // Verificar si existe en catálogo por codigo_proveedor
+            $sql_find = "SELECT id_productos, codigo_interno, existencias FROM catalogo_productos WHERE codigo_proveedor = ? AND codigo_institucion = ?";
+            $stmt_find = $pdo->prepare($sql_find);
+            $stmt_find->execute([$producto['codigo_proveedor'], $codigo_institucion_sesion]);
+            $producto_db = $stmt_find->fetch(PDO::FETCH_ASSOC);
+
+            if ($producto_db) {
+                // Si existe → usar el id y actualizar costo
+                $producto['id_productos'] = $producto_db['id_productos'];
+                $producto['codigo_interno'] = $producto_db['codigo_interno'];
+
+                $sql_update = "UPDATE catalogo_productos SET precio_costo = ? WHERE id_productos = ?";
+                $stmt_update = $pdo->prepare($sql_update);
+                $stmt_update->execute([$producto['precio_costo'], $producto['id_productos']]);
+
+                // Actualizar inventario
+                $sql_stock = "UPDATE catalogo_productos SET existencias = existencias + ? WHERE id_productos = ?";
+                $stmt_stock = $pdo->prepare($sql_stock);
+                $stmt_stock->execute([$producto['cantidad'], $producto['id_productos']]);
+
+            } else {
+                // Si no existe, crear producto nuevo
+                if (empty($producto['codigo_categoria'])) {
+                    $producto['codigo_categoria'] = 'GEN'; // Categoría genérica por defecto
+                }
+                $codigo_producto_generado = generarCodigoProducto($pdo, $producto['codigo_categoria'], $codigo_institucion_sesion);
+
+                $sql_insert_producto = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, descripcion, precio_costo, impuesto_aplicable, unidad_medida, codigo_proveedor, existencias) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                $stmt_insert_producto = $pdo->prepare($sql_insert_producto);
+                $stmt_insert_producto->execute([
+                    $codigo_producto_generado,
+                    $codigo_institucion_sesion,
+                    $producto['descripcion'],
+                    $producto['precio_costo'],
+                    $producto['impuesto_aplicable'],
+                    $producto['unidad_medida'],
+                    $producto['codigo_proveedor'],
+                    $producto['cantidad'] // inventario inicial
+                ]);
+                $producto['id_productos'] = $pdo->lastInsertId('productos_id_productos_seq');
+                $producto['codigo_interno'] = $codigo_producto_generado;
+            }
+
+            // Insertar detalle compra
+            $sql_detalle = "INSERT INTO compras_detalle (id_compra, codigo_producto, cantidad, unidad_medida, precio_costo, precio_unitario, subtotal, iva, descuento, ventas_no_suj, ventas_exenta, ventas_gravada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt_detalle = $pdo->prepare($sql_detalle);
+            $stmt_detalle->execute([
+                $id_compra,
+                $producto['codigo_interno'],
+                $producto['cantidad'],
+                $producto['unidad_medida'],
+                $producto['precio_costo'],
+                $producto['precio_unitario'],
+                $producto['subtotal'],
+                $producto['iva'],
+                $producto['descuento'],
+                $producto['venta_no_suj'] ?? 0,
+                $producto['venta_exenta'] ?? 0,
+                $producto['venta_gravada'] ?? 0
+            ]);
+        }
+
+        $pdo->commit();
+        echo json_encode(['respuesta' => true, 'mensaje' => 'Compra guardada exitosamente.', 'id_compra' => $id_compra]);
+
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar la compra: ' . $e->getMessage()]);
+    }
+    break;
+
 
     case 'obtenerProveedores':
         try {
@@ -506,7 +529,6 @@ switch ($accion) {
         }
         break;
 
-/*
         case 'procesarJsonDte':
             try {
                 if (!isset($_FILES['json_file'])) {
@@ -515,229 +537,177 @@ switch ($accion) {
                 if ($_FILES['json_file']['error'] !== UPLOAD_ERR_OK) {
                     throw new Exception("Error en la subida del archivo. Código: " . $_FILES['json_file']['error']);
                 }
-    
+
                 $json_data = file_get_contents($_FILES['json_file']['tmp_name']);
-                $json_data_cleaned = utf8_encode($json_data);
-                $dte = json_decode($json_data_cleaned, true);
-                
+                $json_data = mb_convert_encoding($json_data, 'UTF-8', 'UTF-8, ISO-8859-1');
+                $json_data = preg_replace('/^\xEF\xBB\xBF/', '', $json_data);
+
+                $dte = json_decode($json_data, true);
+
+
+        
+                //$json_data = file_get_contents($_FILES['json_file']['tmp_name']);
+                //$json_data_cleaned = utf8_encode($json_data);
+                // $dte = json_decode($json_data_cleaned, true);
+        
                 if ($dte === null && json_last_error() !== JSON_ERROR_NONE) {
-                    $error_mensaje = "Error al decodificar el archivo JSON: " . json_last_error_msg();
-                    throw new Exception($error_mensaje);
+                    throw new Exception("Error al decodificar el archivo JSON: " . json_last_error_msg());
                 }
-    
+        
+                // =============================
+                //  VALIDACIÓN de secciones clave
+                // =============================
+                    // Secciones obligatorias (las claves pueden tener alias)
+                    $secciones_obligatorias = [
+                        "identificacion"   => ["identificacion"],
+                        "emisor"           => ["emisor"],
+                        "cuerpoDocumento"  => ["cuerpoDocumento"],
+                        "resumen"          => ["resumen"],
+                        "firma"            => ["firmaElectronica", "firma", "Firma", "respuestaHacienda.firma", "respuestaHacienda.firmaElectronica", "respuestaHacienda.Firma"],
+                        "selloRecibido"    => ["selloRecibido", "SelloRecibido", "respuestaHacienda.selloRecibido", "respuestaHacienda.SelloRecibido"]
+                    ];
+
+                $errores = [];
+                foreach ($secciones_obligatorias as $nombre_logico => $variantes) {
+                    $encontrada = false;
+                    foreach ($variantes as $variante) {
+                        // Soporte para subniveles con punto, ej: "respuestaHacienda.firma"
+                        $parts = explode('.', $variante);
+                        $tmp = $dte;
+                        foreach ($parts as $p) {
+                            if (isset($tmp[$p])) {
+                                $tmp = $tmp[$p];
+                            } else {
+                                $tmp = null;
+                                break;
+                            }
+                        }
+                        if ($tmp !== null) {
+                            // normalizamos al nombre lógico
+                            $dte[$nombre_logico] = $tmp;
+                            $encontrada = true;
+                            break;
+                        }
+                    }
+                    if (!$encontrada) {
+                        $errores[] = "Falta la sección: $nombre_logico";
+                    }
+                }
+
+                if (!empty($errores)) {
+                    echo json_encode([
+                        'respuesta' => false,
+                        'errores' => $errores
+                    ]);
+                    exit;
+                }
+        
                 $mapeo = [
-                    'numero_documento' => $dte['identificacion']['numeroControl'] ?? null,
-                    'tipo_documento' => $dte['identificacion']['tipoDte'] ?? null,
-                    'fecha_emision' => $dte['identificacion']['fecEmi'] ?? null,
-                    'condicion_pago' => $dte['resumen']['condicionOperacion'] ?? null,
-                    'proveedor_nit' => $dte['emisor']['nit'] ?? null,
-                    'proveedor_nombre' => $dte['emisor']['nombre'] ?? null,
-                    'observaciones' => $dte['extension']['observaciones'] ?? null,
-                    'productos_dte' => $dte['cuerpoDocumento'] ?? [],
-                    'total_compra' => $dte['resumen']['totalPagar'] ?? 0,
-                    'total_iva' => $dte['resumen']['totalIva'] ?? 0,
-                    'total_descuento' => $dte['resumen']['totalDescu'] ?? 0
+                    // IDENTIFICACION
+                    'numero_control'     => $dte['identificacion']['numeroControl'] ?? null,
+                    'tipo_dte'           => $dte['identificacion']['tipoDte'] ?? null,
+                    'fecha_emision'      => $dte['identificacion']['fecEmi'] ?? null,
+                    'hora_emision'       => $dte['identificacion']['horEmi'] ?? null,
+                    'codigo_generacion'  => $dte['identificacion']['codigoGeneracion'] ?? null,
+                    'ambiente'           => $dte['identificacion']['ambiente'] ?? null,
+                    'tipo_modelo'        => $dte['identificacion']['tipoModelo'] ?? null,
+                    'tipo_operacion'     => $dte['identificacion']['tipoOperacion'] ?? null,
+                    'tipo_moneda'        => $dte['identificacion']['tipoMoneda'] ?? null,
+
+                    // EMISOR
+                    'emisor_nit'         => $dte['emisor']['nit'] ?? null,
+                    'emisor_nrc'         => $dte['emisor']['nrc'] ?? null,
+                    'emisor_nombre'      => $dte['emisor']['nombre'] ?? null,
+                    'emisor_nombre_comercial' => $dte['emisor']['nombreComercial'] ?? null,
+                    'emisor_cod_actividad'    => $dte['emisor']['codActividad'] ?? null,
+                    'emisor_desc_actividad'   => $dte['emisor']['descActividad'] ?? null,
+                    'emisor_tipo_establecimiento' => $dte['emisor']['tipoEstablecimiento'] ?? null,
+                    'emisor_telefono'    => $dte['emisor']['telefono'] ?? null,
+                    'emisor_correo'      => $dte['emisor']['correo'] ?? null,
+                    'emisor_direccion'   => isset($dte['emisor']['direccion']) ? json_encode($dte['emisor']['direccion']) : null,
+
+                    // RESUMEN
+                    'total_gravada'      => $dte['resumen']['totalGravada'] ?? 0,
+                    'total_exenta'       => $dte['resumen']['totalExenta'] ?? 0,
+                    'total_no_suj'       => $dte['resumen']['totalNoSuj'] ?? 0,
+                    'total_iva'          => $dte['resumen']['totalIva'] ?? 0,
+                    'total_descuento'    => $dte['resumen']['totalDescu'] ?? 0,
+                    'total_pagar'        => $dte['resumen']['totalPagar'] ?? 0,
+
+                    // FIRMA Y SELLO (buscando en raíz y en respuestaHacienda)
+                    'firma_electronica'  => 
+                        $dte['firma'] 
+                        ?? $dte['firmaElectronica'] 
+                        ?? $dte['Firma'] 
+                        ?? ($dte['respuestaHacienda']['firma'] ?? null)
+                        ?? ($dte['respuestaHacienda']['firmaElectronica'] ?? null)
+                        ?? ($dte['respuestaHacienda']['Firma'] ?? null),
+
+                    'sello_recibido'     => 
+                        $dte['selloRecibido'] 
+                        ?? ($dte['respuestaHacienda']['selloRecibido'] ?? null)
+                        ?? ($dte['respuestaHacienda']['SelloRecibido'] ?? null),
+
+                    // OBSERVACIONES
+                    'observaciones'      => $dte['extension']['observaciones'] ?? null,
+
+                    // PRODUCTOS
+                    'productos_dte'      => $dte['cuerpoDocumento'] ?? []
                 ];
-    
+
+        
+                // =============================
+                //  MAPEO DETALLE (productos)
+                // =============================
                 $productos = [];
                 foreach ($mapeo['productos_dte'] as $item) {
                     $codigo_proveedor_producto = $item['codigo'] ?? null;
-                    $descripcion_producto = $item['descripcion'] ?? null;
-                    
-                    // Buscar el producto en tu catálogo
-                    $sql_find_product = "SELECT id_productos, codigo_interno, impuesto_aplicable, codigo_ganancia, precio_costo, unidad_medida FROM catalogo_productos WHERE codigo_interno = ? AND codigo_institucion = ?";
+                    $descripcion_producto      = $item['descripcion'] ?? null;
+        
+                    // Buscar producto en catálogo interno
+                    $sql_find_product = "SELECT id_productos, codigo_interno, impuesto_aplicable, codigo_ganancia, precio_costo, unidad_medida 
+                                            FROM catalogo_productos 
+                                            WHERE codigo_interno = ? AND codigo_institucion = ?";
                     $stmt_find_product = $pdo->prepare($sql_find_product);
                     $stmt_find_product->execute([$codigo_proveedor_producto, $codigo_institucion_sesion]);
                     $producto_db = $stmt_find_product->fetch(PDO::FETCH_ASSOC);
-    
+        
                     $producto_mapeado = [
-                        'id_productos' => $producto_db['id_productos'] ?? null,
-                        'codigo_interno' => $producto_db['codigo_interno'] ?? null,
-                        'codigo_proveedor' => $codigo_proveedor_producto, // Guardamos el código del proveedor
-                        'descripcion' => $descripcion_producto,
-                        'cantidad' => $item['cantidad'] ?? 0,
-                        'precio_costo' => $item['precioUni'] ?? 0,
-                        'precio_unitario' => $item['precioUni'] ?? 0,
-                        'iva' => $item['ivaItem'] ?? 0,
-                        'descuento' => $item['montoDescu'] ?? 0,
+                        'id_productos'       => $producto_db['id_productos'] ?? null,
+                        'codigo_interno'     => $producto_db['codigo_interno'] ?? null,
+                        'codigo_proveedor'   => $codigo_proveedor_producto,
+                        'descripcion'        => $descripcion_producto,
+                        'cantidad'           => $item['cantidad'] ?? 0,
+                        'precio_unitario'    => $item['precioUni'] ?? 0,
+                        'precio_costo'       => $item['precioUni'] ?? 0,
+                        'iva'                => $item['ivaItem'] ?? 0,
+                        'descuento'          => $item['montoDescu'] ?? 0,
+                        'venta_gravada'      => $item['ventaGravada'] ?? 0,
+                        'venta_exenta'       => $item['ventaExenta'] ?? 0,
+                        'venta_no_suj'       => $item['ventaNoSuj'] ?? 0,
+                        'unidad_medida'      => $producto_db['unidad_medida'] ?? ($item['uniMedida'] ?? null),
                         'impuesto_aplicable' => $producto_db['impuesto_aplicable'] ?? null,
-                        'unidad_medida' => $producto_db['unidad_medida'] ?? null,
-                        'en_catalogo' => $producto_db ? true : false
+                        'en_catalogo'        => $producto_db ? true : false
                     ];
                     $productos[] = $producto_mapeado;
                 }
-                
-                // Devolver los datos del DTE al frontend para la vista previa
-                echo json_encode(['respuesta' => true, 'compra' => $mapeo, 'productos' => $productos]);
-    
+        
+                // =============================
+                //  RESPUESTA
+                // =============================
+                echo json_encode([
+                    'respuesta' => true,
+                    'compra'    => $mapeo,
+                    'productos' => $productos
+                ]);
+        
             } catch (Exception $e) {
-                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al procesar el DTE: ' . $e->getMessage()]);
+                echo json_encode([
+                    'respuesta' => false,
+                    'error'     => $e->getMessage()
+                ]);
             }
             break;
-
-            */
-            case 'procesarJsonDte':
-                try {
-                    if (!isset($_FILES['json_file'])) {
-                        throw new Exception("No se ha subido ningún archivo.");
-                    }
-                    if ($_FILES['json_file']['error'] !== UPLOAD_ERR_OK) {
-                        throw new Exception("Error en la subida del archivo. Código: " . $_FILES['json_file']['error']);
-                    }
-
-                    $json_data = file_get_contents($_FILES['json_file']['tmp_name']);
-                    $json_data = mb_convert_encoding($json_data, 'UTF-8', 'UTF-8, ISO-8859-1');
-                    $json_data = preg_replace('/^\xEF\xBB\xBF/', '', $json_data);
-
-                    $dte = json_decode($json_data, true);
-
-
-            
-                    //$json_data = file_get_contents($_FILES['json_file']['tmp_name']);
-                    //$json_data_cleaned = utf8_encode($json_data);
-                   // $dte = json_decode($json_data_cleaned, true);
-            
-                    if ($dte === null && json_last_error() !== JSON_ERROR_NONE) {
-                        throw new Exception("Error al decodificar el archivo JSON: " . json_last_error_msg());
-                    }
-            
-                    // =============================
-                    //  VALIDACIÓN de secciones clave
-                    // =============================
-                        // Secciones obligatorias (las claves pueden tener alias)
-                        $secciones_obligatorias = [
-                            "identificacion"   => ["identificacion"],
-                            "emisor"           => ["emisor"],
-                            "cuerpoDocumento"  => ["cuerpoDocumento"],
-                            "resumen"          => ["resumen"],
-                            "firma"            => ["firmaElectronica", "firma", "Firma"], // acepta cualquiera
-                            "selloRecibido"    => ["selloRecibido", "SelloRecibido"]
-                        ];
-
-                        $errores = [];
-                        foreach ($secciones_obligatorias as $nombre_logico => $variantes) {
-                            $encontrada = false;
-                            foreach ($variantes as $variante) {
-                                if (isset($dte[$variante])) {
-                                    // normalizamos el nombre para el mapeo
-                                    $dte[$nombre_logico] = $dte[$variante];
-                                    $encontrada = true;
-                                    break;
-                                }
-                            }
-                            if (!$encontrada) {
-                                $errores[] = "Falta la sección: $nombre_logico";
-                            }
-                        }
-            
-                    if (!empty($errores)) {
-                        echo json_encode([
-                            'respuesta' => false,
-                            'errores' => $errores
-                        ]);
-                        exit;
-                    }
-            
-                    // =============================
-                    //  MAPEO CABECERA (compra)
-                    // =============================
-                    $mapeo = [
-                        // IDENTIFICACION
-                        'numero_control'     => $dte['identificacion']['numeroControl'] ?? null,
-                        'tipo_dte'           => $dte['identificacion']['tipoDte'] ?? null,
-                        'fecha_emision'      => $dte['identificacion']['fecEmi'] ?? null,
-                        'hora_emision'       => $dte['identificacion']['horEmi'] ?? null,
-                        'codigo_generacion'  => $dte['identificacion']['codigoGeneracion'] ?? null,
-                        'ambiente'           => $dte['identificacion']['ambiente'] ?? null,
-                        'tipo_modelo'        => $dte['identificacion']['tipoModelo'] ?? null,
-                        'tipo_operacion'     => $dte['identificacion']['tipoOperacion'] ?? null,
-                        'tipo_moneda'        => $dte['identificacion']['tipoMoneda'] ?? null,
-            
-                        // EMISOR
-                        'emisor_nit'         => $dte['emisor']['nit'] ?? null,
-                        'emisor_nrc'         => $dte['emisor']['nrc'] ?? null,
-                        'emisor_nombre'      => $dte['emisor']['nombre'] ?? null,
-                        'emisor_nombre_comercial' => $dte['emisor']['nombreComercial'] ?? null,
-                        'emisor_cod_actividad'    => $dte['emisor']['codActividad'] ?? null,
-                        'emisor_desc_actividad'   => $dte['emisor']['descActividad'] ?? null,
-                        'emisor_tipo_establecimiento' => $dte['emisor']['tipoEstablecimiento'] ?? null,
-                        'emisor_telefono'    => $dte['emisor']['telefono'] ?? null,
-                        'emisor_correo'      => $dte['emisor']['correo'] ?? null,
-                        'emisor_direccion'   => isset($dte['emisor']['direccion']) ? json_encode($dte['emisor']['direccion']) : null,
-            
-                        // RESUMEN
-                        'total_gravada'      => $dte['resumen']['totalGravada'] ?? 0,
-                        'total_exenta'       => $dte['resumen']['totalExenta'] ?? 0,
-                        'total_no_suj'       => $dte['resumen']['totalNoSuj'] ?? 0,
-                        'total_iva'          => $dte['resumen']['totalIva'] ?? 0,
-                        'total_descuento'    => $dte['resumen']['totalDescu'] ?? 0,
-                        'total_pagar'        => $dte['resumen']['totalPagar'] ?? 0,
-            
-                        // FIRMA Y SELLO
-                        'firma_electronica'  => $dte['Firma'] ?? null,
-                        'sello_recibido'     => $dte['selloRecibido'] ?? null,
-            
-                        // OBSERVACIONES (si vienen)
-                        'observaciones'      => $dte['extension']['observaciones'] ?? null,
-            
-                        // Guardamos cuerpoDocumento crudo por si acaso
-                        'productos_dte'      => $dte['cuerpoDocumento'] ?? []
-                    ];
-            
-                    // =============================
-                    //  MAPEO DETALLE (productos)
-                    // =============================
-                    $productos = [];
-                    foreach ($mapeo['productos_dte'] as $item) {
-                        $codigo_proveedor_producto = $item['codigo'] ?? null;
-                        $descripcion_producto      = $item['descripcion'] ?? null;
-            
-                        // Buscar producto en catálogo interno
-                        $sql_find_product = "SELECT id_productos, codigo_interno, impuesto_aplicable, codigo_ganancia, precio_costo, unidad_medida 
-                                             FROM catalogo_productos 
-                                             WHERE codigo_interno = ? AND codigo_institucion = ?";
-                        $stmt_find_product = $pdo->prepare($sql_find_product);
-                        $stmt_find_product->execute([$codigo_proveedor_producto, $codigo_institucion_sesion]);
-                        $producto_db = $stmt_find_product->fetch(PDO::FETCH_ASSOC);
-            
-                        $producto_mapeado = [
-                            'id_productos'       => $producto_db['id_productos'] ?? null,
-                            'codigo_interno'     => $producto_db['codigo_interno'] ?? null,
-                            'codigo_proveedor'   => $codigo_proveedor_producto,
-                            'descripcion'        => $descripcion_producto,
-                            'cantidad'           => $item['cantidad'] ?? 0,
-                            'precio_unitario'    => $item['precioUni'] ?? 0,
-                            'precio_costo'       => $item['precioUni'] ?? 0,
-                            'iva'                => $item['ivaItem'] ?? 0,
-                            'descuento'          => $item['montoDescu'] ?? 0,
-                            'venta_gravada'      => $item['ventaGravada'] ?? 0,
-                            'venta_exenta'       => $item['ventaExenta'] ?? 0,
-                            'venta_no_suj'       => $item['ventaNoSuj'] ?? 0,
-                            'unidad_medida'      => $producto_db['unidad_medida'] ?? ($item['uniMedida'] ?? null),
-                            'impuesto_aplicable' => $producto_db['impuesto_aplicable'] ?? null,
-                            'en_catalogo'        => $producto_db ? true : false
-                        ];
-                        $productos[] = $producto_mapeado;
-                    }
-            
-                    // =============================
-                    //  RESPUESTA
-                    // =============================
-                    echo json_encode([
-                        'respuesta' => true,
-                        'compra'    => $mapeo,
-                        'productos' => $productos
-                    ]);
-            
-                } catch (Exception $e) {
-                    echo json_encode([
-                        'respuesta' => false,
-                        'error'     => $e->getMessage()
-                    ]);
-                }
-                break;
-            
-             
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;

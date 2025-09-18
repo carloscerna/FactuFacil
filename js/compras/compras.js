@@ -153,37 +153,47 @@ $(function () {
         }
     }
 
-    function renderizarTabla() {
-        let tbody = $('#tablaProductosCompra tbody');
-        tbody.empty();
-        let total = 0;
+   function renderizarTabla() {
+    let tbody = $('#tablaProductosCompra tbody');
+    tbody.empty();
+    let total = 0;
 
-        productosCompra.forEach((p, index) => {
-            const subtotal = (p.cantidad * p.precio_unitario) || 0;
-            total += subtotal;
-            
-            const fila = `
-                <tr data-index="${index}">
-                    <td>${p.id_productos}</td>
-                    <td>${p.descripcion}</td>
-                    <td class="text-end">
-                        <input type="number" class="form-control form-control-sm text-end input-cantidad" value="${p.cantidad}" min="0.01" step="0.01" data-index="${index}">
-                    </td>
-                    <td class="text-end">
-                        <input type="number" class="form-control form-control-sm text-end input-precio" value="${p.precio_unitario.toFixed(2)}" min="0.01" step="0.01" data-index="${index}">
-                    </td>
-                    <td>${p.impuesto_descripcion || 'N/A'}</td>
-                    <td class="text-end subtotal-row">${subtotal.toFixed(2)}</td>
-                    <td class="text-center">
-                        <button type="button" class="btn btn-danger btn-sm btnEliminarProducto" data-index="${index}"><i class="fas fa-trash-alt"></i></button>
-                    </td>
-                </tr>
-            `;
-            tbody.append(fila);
-        });
+    productosCompra.forEach((p, index) => {
+        const subtotal = (p.cantidad * p.precio_unitario) - (p.descuento || 0);
+        total += subtotal;
 
-        $('#totalCompra').text(total.toFixed(2));
-    }
+        const fila = `
+            <tr data-index="${index}">
+                <td>${p.codigo_interno || '<span class="text-muted">Auto</span>'}</td>
+                <td>${p.codigo_proveedor || ''}</td>
+                <td class="text-end">
+                    <input type="number" class="form-control form-control-sm text-end input-cantidad" 
+                           value="${p.cantidad}" min="0.01" step="0.01" data-index="${index}">
+                </td>
+                <td>${p.unidad_medida || ''}</td>
+                <td>${p.descripcion}</td>
+                <td class="text-end">
+                    <input type="number" class="form-control form-control-sm text-end input-precio" 
+                           value="${(p.precio_unitario || 0).toFixed(2)}" min="0.01" step="0.01" data-index="${index}">
+                </td>
+                <td class="text-end">${(p.descuento || 0).toFixed(2)}</td>
+                <td class="text-end">${(p.venta_no_suj || 0).toFixed(2)}</td>
+                <td class="text-end">${(p.venta_exenta || 0).toFixed(2)}</td>
+                <td class="text-end">${(p.venta_gravada || 0).toFixed(2)}</td>
+                <td class="text-end subtotal-row">${subtotal.toFixed(2)}</td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-danger btn-sm btnEliminarProducto" data-index="${index}">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+        tbody.append(fila);
+    });
+
+    $('#totalCompra').text(total.toFixed(2));
+}
+
 
     // Evento para detectar cambios en la cantidad o el precio
     $('#tablaProductosCompra tbody').on('change', '.input-cantidad, .input-precio', function() {
@@ -192,7 +202,10 @@ $(function () {
         const valor = $(this).val();
 
         productosCompra[index][campo] = parseFloat(valor) || 0;
-        productosCompra[index].subtotal = (productosCompra[index].cantidad * productosCompra[index].precio_unitario);
+//        productosCompra[index].subtotal = (productosCompra[index].cantidad * productosCompra[index].precio_unitario);
+        productosCompra[index].subtotal = 
+            (productosCompra[index].cantidad * productosCompra[index].precio_unitario) 
+            - (productosCompra[index].descuento || 0);
 
         renderizarTabla();
     });
