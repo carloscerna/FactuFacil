@@ -253,7 +253,7 @@ switch ($accion) {
                 // Validar que el proveedor exista
                 $sql_proveedor = "SELECT id_proveedores FROM proveedores WHERE nit = ? AND codigo_institucion = ?";
                 $stmt_proveedor = $pdo->prepare($sql_proveedor);
-                $stmt_proveedor->execute([$compra_data['proveedor_nit'], $codigo_institucion_sesion]);
+                $stmt_proveedor->execute([$compra_data['emisor_nit'], $codigo_institucion_sesion]);
                 $proveedor_id = $stmt_proveedor->fetchColumn();
     
                 if (!$proveedor_id) {
@@ -264,7 +264,7 @@ switch ($accion) {
                     }
                     $sql_insert_proveedor = "INSERT INTO proveedores (codigo_institucion, codigo, nit, nombre_empresa) VALUES (?, ?, ?, ?)";
                     $stmt_insert_proveedor = $pdo->prepare($sql_insert_proveedor);
-                    $stmt_insert_proveedor->execute([$codigo_institucion_sesion, $codigo_proveedor_generado, $compra_data['proveedor_nit'], $compra_data['proveedor_nombre']]);
+                    $stmt_insert_proveedor->execute([$codigo_institucion_sesion, $codigo_proveedor_generado, $compra_data['emisor_nit'], $compra_data['emisor_nombre']]);
                     $proveedor_id = $pdo->lastInsertId('proveedores_id_proveedores_seq');
                 }
     
@@ -273,12 +273,12 @@ switch ($accion) {
                 $stmt_cabecera = $pdo->prepare($sql_cabecera);
                 $stmt_cabecera->execute([
                     $codigo_institucion_sesion,
-                    $compra_data['numero_documento'],
-                    $compra_data['tipo_documento'],
+                    $compra_data['numero_control'],
+                    $compra_data['tipo_dte'],
                     $compra_data['fecha_emision'],
                     $proveedor_id,
-                    $compra_data['condicion_pago'],
-                    $compra_data['total_compra'],
+                    $compra_data['tipo_operacion'],
+                    $compra_data['total_pagar'],
                     $compra_data['observaciones'],
                     $compra_data['total_iva'],
                     $compra_data['total_descuento']

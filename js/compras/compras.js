@@ -324,11 +324,11 @@ $(function () {
         compraEncabezadoDte = compra;
         
         // Llenar los campos de encabezado del formulario manual
-        $('[name="numero_documento"]').val(compra.numero_documento);
-        $('[name="tipo_documento"]').val(compra.tipo_documento);
+        $('[name="numero_documento"]').val(compra.numero_control);
+        $('[name="tipo_documento"]').val(compra.tipo_dte);
         $('[name="fecha_emision"]').val(compra.fecha_emision);
         $('[name="id_proveedores"]').val(compra.id_proveedores); // Asume que el ID del proveedor está en el DTE
-        $('[name="condicion_pago"]').val(compra.condicion_pago);
+        $('[name="condicion_pago"]').val(compra.tipo_operacion);
         $('[name="plazo_pago"]').val(compra.plazo_pago);
         $('[name="observaciones"]').val(compra.observaciones);
 
