@@ -19,6 +19,7 @@ $(function () {
         $('#seccionManual').hide();
         $('#seccionDte').show();
         modoDeGuardado = 'dte';
+        console.log(modoDeGuardado);
         // Limpiar el formulario al cambiar de modo
         $('#formCompra')[0].reset();
         productosCompra = [];

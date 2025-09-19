@@ -7,6 +7,10 @@
     max-width: 100%; 
     width: 100%;
 }
+
+.ocultarDTE {
+    display: none;
+}
 </style>
 
 
@@ -132,23 +136,23 @@
           </form>
         </div>
 
-        <!-- DTE Upload Form -->
-        <div id="seccionDte" style="display:none;">
-          <form id="formSubirDte" enctype="multipart/form-data">
-            <div class="row g-3">
-              <div class="col-12 col-md-6">
-                <label for="json_file" class="form-label">Subir DTE (JSON)</label>
-                <input type="file" class="form-control" id="json_file" name="json_file" accept=".json" required>
-              </div>
-              <div class="col-12 col-md-6 d-flex align-items-end">
-                <button type="submit" class="btn btn-info w-100" id="btnSubirDte">
-                  <i class="fas fa-upload me-2"></i>Procesar DTE
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
       </div>
+              <!-- DTE Upload Form -->
+              <div id="seccionDte" class="ocultarDTE">
+                <form id="formSubirDte" enctype="multipart/form-data">
+                  <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label for="json_file" class="form-label">Subir DTE (JSON)</label>
+                      <input type="file" class="form-control" id="json_file" name="json_file" accept=".json" required>
+                    </div>
+                    <div class="col-12 col-md-6 d-flex align-items-end">
+                      <button type="submit" class="btn btn-info w-100" id="btnSubirDte">
+                        <i class="fas fa-upload me-2"></i>Procesar DTE
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
     </div>
   </div>
 </div>
