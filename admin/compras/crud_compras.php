@@ -250,26 +250,41 @@ switch ($accion) {
         $compra_data = json_decode($_POST['compra_data'], true);
         $productos_data = json_decode($_POST['productos_data'], true);
 
-        // Validar que el proveedor exista
+        if (!$compra_data || !$productos_data) {
+            throw new Exception("Datos de la compra inválidos.");
+        }
+        error_log("DEBUG PRODUCTO: " . print_r($productos_data, true));
+        error_log("DEBUG PRODUCTO: " . print_r($compra_data, true));
+
+        // 1. Validar/crear proveedor
         $sql_proveedor = "SELECT id_proveedores FROM proveedores WHERE nit = ? AND codigo_institucion = ?";
         $stmt_proveedor = $pdo->prepare($sql_proveedor);
         $stmt_proveedor->execute([$compra_data['emisor_nit'], $codigo_institucion_sesion]);
         $proveedor_id = $stmt_proveedor->fetchColumn();
 
         if (!$proveedor_id) {
-            // Si no existe, lo crea
             $codigo_proveedor_generado = generarCodigoProveedor($pdo, $codigo_institucion_sesion);
             if (strpos($codigo_proveedor_generado, 'Error') !== false) {
-                 throw new Exception("No se pudo generar el código para el nuevo proveedor. Motivo: " . $codigo_proveedor_generado);
+                throw new Exception("No se pudo generar código para proveedor: $codigo_proveedor_generado");
             }
-            $sql_insert_proveedor = "INSERT INTO proveedores (codigo_institucion, codigo, nit, nombre_empresa) VALUES (?, ?, ?, ?)";
+            $sql_insert_proveedor = "INSERT INTO proveedores (codigo_institucion, codigo, nit, nombre_empresa) 
+                                     VALUES (?, ?, ?, ?)";
             $stmt_insert_proveedor = $pdo->prepare($sql_insert_proveedor);
-            $stmt_insert_proveedor->execute([$codigo_institucion_sesion, $codigo_proveedor_generado, $compra_data['emisor_nit'], $compra_data['emisor_nombre']]);
+            $stmt_insert_proveedor->execute([
+                $codigo_institucion_sesion, 
+                $codigo_proveedor_generado, 
+                $compra_data['emisor_nit'], 
+                $compra_data['emisor_nombre']
+            ]);
             $proveedor_id = $pdo->lastInsertId('proveedores_id_proveedores_seq');
         }
 
-        // Insertar cabecera compra
-        $sql_cabecera = "INSERT INTO compras_cabecera (codigo_institucion, numero_documento, tipo_documento, fecha_emision, id_proveedores, condicion_pago, total_compra, observaciones, total_iva, total_descuento) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        // 2. Insertar cabecera con resumen completo
+        $sql_cabecera = "INSERT INTO compras_cabecera (
+                codigo_institucion, numero_documento, tipo_documento, fecha_emision,
+                id_proveedores, condicion_pago, observaciones,
+                total_no_suj, total_exenta, total_gravada, total_iva, total_descuento, total_compra
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_cabecera = $pdo->prepare($sql_cabecera);
         $stmt_cabecera->execute([
             $codigo_institucion_sesion,
@@ -278,60 +293,81 @@ switch ($accion) {
             $compra_data['fecha_emision'],
             $proveedor_id,
             $compra_data['tipo_operacion'],
-            $compra_data['total_pagar'],
-            $compra_data['observaciones'],
-            $compra_data['total_iva'],
-            $compra_data['total_descuento']
+            $compra_data['observaciones'] ?? null,
+            $compra_data['resumen']['total_no_suj'] ?? 0,
+            $compra_data['resumen']['total_exenta'] ?? 0,
+            $compra_data['resumen']['total_gravada'] ?? 0,
+            $compra_data['resumen']['total_iva'] ?? 0,
+            $compra_data['resumen']['total_descuento'] ?? 0,
+            $compra_data['resumen']['total_pagar'] ?? 0
         ]);
         $id_compra = $pdo->lastInsertId('compras_cabecera_id_compra_seq');
 
-        // Procesar productos
+        // 3. Procesar productos
         foreach ($productos_data as $producto) {
-            // Verificar si existe en catálogo por codigo_proveedor
-            $sql_find = "SELECT id_productos, codigo_interno, existencias FROM catalogo_productos WHERE codigo_proveedor = ? AND codigo_institucion = ?";
+            if (empty($producto['codigo_proveedor'])) {
+                throw new Exception("Producto sin código de proveedor: " . ($producto['descripcion'] ?? 'Sin descripción'));
+            }
+
+            // Buscar producto por codigo_proveedor
+            $sql_find = "SELECT id_productos, codigo_interno, existencias 
+                         FROM catalogo_productos 
+                         WHERE codigo_proveedor = ? AND codigo_institucion = ?";
             $stmt_find = $pdo->prepare($sql_find);
             $stmt_find->execute([$producto['codigo_proveedor'], $codigo_institucion_sesion]);
             $producto_db = $stmt_find->fetch(PDO::FETCH_ASSOC);
 
             if ($producto_db) {
-                // Si existe → usar el id y actualizar costo
+                // Existe en catálogo → actualizar costo e inventario
                 $producto['id_productos'] = $producto_db['id_productos'];
                 $producto['codigo_interno'] = $producto_db['codigo_interno'];
 
-                $sql_update = "UPDATE catalogo_productos SET precio_costo = ? WHERE id_productos = ?";
-                $stmt_update = $pdo->prepare($sql_update);
-                $stmt_update->execute([$producto['precio_costo'], $producto['id_productos']]);
+                $sql_update = "UPDATE catalogo_productos 
+                               SET precio_costo = ? 
+                               WHERE id_productos = ?";
+                $pdo->prepare($sql_update)->execute([$producto['precio_costo'], $producto['id_productos']]);
 
-                // Actualizar inventario
-                $sql_stock = "UPDATE catalogo_productos SET existencias = existencias + ? WHERE id_productos = ?";
-                $stmt_stock = $pdo->prepare($sql_stock);
-                $stmt_stock->execute([$producto['cantidad'], $producto['id_productos']]);
+                $sql_stock = "UPDATE catalogo_productos 
+                              SET existencias = existencias + ? 
+                              WHERE id_productos = ?";
+                $pdo->prepare($sql_stock)->execute([$producto['cantidad'], $producto['id_productos']]);
 
             } else {
-                // Si no existe, crear producto nuevo
+                // Crear producto nuevo
                 if (empty($producto['codigo_categoria'])) {
-                    $producto['codigo_categoria'] = 'GEN'; // Categoría genérica por defecto
+                    $producto['codigo_categoria'] = 'GEN'; // Categoría genérica
                 }
                 $codigo_producto_generado = generarCodigoProducto($pdo, $producto['codigo_categoria'], $codigo_institucion_sesion);
 
-                $sql_insert_producto = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, descripcion, precio_costo, impuesto_aplicable, unidad_medida, codigo_proveedor, existencias) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql_insert_producto = "INSERT INTO catalogo_productos (
+                    codigo_interno, codigo_institucion, codigo_categoria,
+                    descripcion, precio_costo, impuesto_aplicable, unidad_medida,
+                    codigo_proveedor, existencias
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING id_productos";
+
                 $stmt_insert_producto = $pdo->prepare($sql_insert_producto);
                 $stmt_insert_producto->execute([
                     $codigo_producto_generado,
                     $codigo_institucion_sesion,
+                    $producto['codigo_categoria'],
                     $producto['descripcion'],
                     $producto['precio_costo'],
                     $producto['impuesto_aplicable'],
                     $producto['unidad_medida'],
                     $producto['codigo_proveedor'],
-                    $producto['cantidad'] // inventario inicial
+                    $producto['cantidad']
                 ]);
-                $producto['id_productos'] = $pdo->lastInsertId('productos_id_productos_seq');
+                $producto['id_productos'] = $stmt_insert_producto->fetchColumn();
                 $producto['codigo_interno'] = $codigo_producto_generado;
             }
 
-            // Insertar detalle compra
-            $sql_detalle = "INSERT INTO compras_detalle (id_compra, codigo_producto, cantidad, unidad_medida, precio_costo, precio_unitario, subtotal, iva, descuento, ventas_no_suj, ventas_exenta, ventas_gravada) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            // Insertar detalle
+            $sql_detalle = "INSERT INTO compras_detalle (
+                    id_compra, codigo_producto, cantidad, unidad_medida, 
+                    precio_costo, precio_unitario, iva, descuento,
+                    ventas_no_suj, ventas_exenta, ventas_gravada
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt_detalle = $pdo->prepare($sql_detalle);
             $stmt_detalle->execute([
                 $id_compra,
@@ -340,7 +376,6 @@ switch ($accion) {
                 $producto['unidad_medida'],
                 $producto['precio_costo'],
                 $producto['precio_unitario'],
-                $producto['subtotal'],
                 $producto['iva'],
                 $producto['descuento'],
                 $producto['venta_no_suj'] ?? 0,
@@ -350,11 +385,18 @@ switch ($accion) {
         }
 
         $pdo->commit();
-        echo json_encode(['respuesta' => true, 'mensaje' => 'Compra guardada exitosamente.', 'id_compra' => $id_compra]);
+        echo json_encode([
+            'respuesta' => true, 
+            'mensaje'   => 'Compra guardada exitosamente.', 
+            'id_compra' => $id_compra
+        ]);
 
     } catch (Exception $e) {
         $pdo->rollBack();
-        echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar la compra: ' . $e->getMessage()]);
+        echo json_encode([
+            'respuesta' => false, 
+            'mensaje'   => 'Error al guardar la compra: ' . $e->getMessage()
+        ]);
     }
     break;
 
@@ -652,7 +694,16 @@ switch ($accion) {
                     'observaciones'      => $dte['extension']['observaciones'] ?? null,
 
                     // PRODUCTOS
-                    'productos_dte'      => $dte['cuerpoDocumento'] ?? []
+                    'productos_dte'      => $dte['cuerpoDocumento'] ?? [],
+
+                    'resumen' => [
+                        'total_no_suj'    => $dte['resumen']['totalNoSuj'] ?? 0,
+                        'total_exenta'    => $dte['resumen']['totalExenta'] ?? 0,
+                        'total_gravada'   => $dte['resumen']['totalGravada'] ?? 0,
+                        'total_iva'       => $dte['resumen']['totalIva'] ?? 0,
+                        'total_descuento' => $dte['resumen']['totalDescu'] ?? 0,
+                        'total_pagar'     => $dte['resumen']['totalPagar'] ?? 0
+                    ]
                 ];
 
         
@@ -691,7 +742,40 @@ switch ($accion) {
                     ];
                     $productos[] = $producto_mapeado;
                 }
-        
+                // Después de mapear los datos de compra
+                        $nit_emisor = $mapeo['emisor_nit'] ?? null;
+                        $nombre_emisor = $mapeo['emisor_nombre'] ?? null;
+
+                        if ($nit_emisor) {
+                            // Verificar si ya existe el proveedor
+                            $sql_proveedor = "SELECT id_proveedores, codigo FROM proveedores 
+                                            WHERE nit = ? AND codigo_institucion = ?";
+                            $stmt_proveedor = $pdo->prepare($sql_proveedor);
+                            $stmt_proveedor->execute([$nit_emisor, $codigo_institucion_sesion]);
+                            $proveedor = $stmt_proveedor->fetch(PDO::FETCH_ASSOC);
+
+                            if (!$proveedor) {
+                                // Crear nuevo proveedor
+                                $codigo_proveedor_generado = generarCodigoProveedor($pdo, $codigo_institucion_sesion);
+                                $sql_insert_proveedor = "INSERT INTO proveedores 
+                                    (codigo_institucion, codigo, nit, nombre_empresa) 
+                                    VALUES (?, ?, ?, ?)";
+                                $stmt_insert_proveedor = $pdo->prepare($sql_insert_proveedor);
+                                $stmt_insert_proveedor->execute([
+                                    $codigo_institucion_sesion,
+                                    $codigo_proveedor_generado,
+                                    $nit_emisor,
+                                    $nombre_emisor
+                                ]);
+                                $proveedor_id = $pdo->lastInsertId('proveedores_id_proveedores_seq');
+                            } else {
+                                $proveedor_id = $proveedor['id_proveedores'];
+                            }
+
+                            // Devolver también el proveedor actual para refrescar el select en frontend
+                            $mapeo['proveedor_id'] = $proveedor_id;
+                            $mapeo['proveedor_nombre'] = $nombre_emisor;
+                        }
                 // =============================
                 //  RESPUESTA
                 // =============================

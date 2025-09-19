@@ -119,13 +119,39 @@
                     <tbody>
                         <!-- Aquí se cargan los productos dinámicamente con JS -->
                     </tbody>
-                    <tfoot class="table-light">
+                        <tfoot class="table-light">
                         <tr>
-                        <th colspan="10" class="text-end">Total:</th>
-                        <th class="text-end" id="totalCompra">0.00</th>
-                        <th></th>
+                            <th colspan="10" class="text-end">Ventas No Sujetas:</th>
+                            <th id="totalNoSuj" class="text-end">0.00</th>
+                            <th></th>
                         </tr>
-                    </tfoot>
+                        <tr>
+                            <th colspan="10" class="text-end">Ventas Exentas:</th>
+                            <th id="totalExenta" class="text-end">0.00</th>
+                            <th></th>
+                        </tr>
+                        <tr>
+                            <th colspan="10" class="text-end">Ventas Gravadas:</th>
+                            <th id="totalGravada" class="text-end">0.00</th>
+                            <th></th>
+                        </tr>
+                        <tr>
+                            <th colspan="10" class="text-end">IVA:</th>
+                            <th id="totalIva" class="text-end">0.00</th>
+                            <th></th>
+                        </tr>
+                        <tr>
+                            <th colspan="10" class="text-end">Descuento:</th>
+                            <th id="totalDescuento" class="text-end">0.00</th>
+                            <th></th>
+                        </tr>
+                        <tr>
+                            <th colspan="10" class="text-end">Total a Pagar:</th>
+                            <th id="totalFinal" class="text-end">0.00</th>
+                            <th></th>
+                        </tr>
+                        </tfoot>
+
                     </table>
 
             <div class="d-grid mt-4">

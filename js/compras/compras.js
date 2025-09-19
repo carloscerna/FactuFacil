@@ -13,6 +13,7 @@ $(function () {
         $('#formCompra')[0].reset();
         productosCompra = [];
         renderizarTabla();
+        
     });
 
     $('#btnDte').on('click', function() {
@@ -322,6 +323,20 @@ $(function () {
                 if (response.respuesta) {
                     toastr.success('DTE procesado. Verifique los datos para guardar la compra.');
                     mostrarVistaPrevia(response.compra, response.productos);
+
+                        // Recargar proveedores si el backend devolvió un proveedor
+                            if (response.compra.proveedor_id) {
+                                recargarProveedores(response.compra.proveedor_id);
+                            }
+                        // Mostrar resumen en el footer
+                            if (response.compra.resumen) {
+                                $('#totalNoSuj').text(parseFloat(response.compra.resumen.total_no_suj).toFixed(2));
+                                $('#totalExenta').text(parseFloat(response.compra.resumen.total_exenta).toFixed(2));
+                                $('#totalGravada').text(parseFloat(response.compra.resumen.total_gravada).toFixed(2));
+                                $('#totalIva').text(parseFloat(response.compra.resumen.total_iva).toFixed(2));
+                                $('#totalDescuento').text(parseFloat(response.compra.resumen.total_descuento).toFixed(2));
+                                $('#totalFinal').text(parseFloat(response.compra.resumen.total_pagar).toFixed(2));
+                            }
                 } else {
                     toastr.error('Error: ' + response.mensaje);
                 }
@@ -356,7 +371,29 @@ $(function () {
         modoDeGuardado = 'dte'; // Establecer el modo a DTE
     }
     
-    // ... El resto del código de la lógica del modal, etc.
+    // Función para recargar el select de proveedores
+    function recargarProveedores(seleccionadoId = null) {
+    $.ajax({
+        url: 'admin/compras/crud_compras.php',
+        type: 'POST',
+        data: { accion: 'obtenerProveedores' },
+        dataType: 'json',
+        success: function(data) {
+            let select = $('#selectProveedor');
+            select.empty();
+
+            // Si PHP devuelve un objeto con clave "proveedores"
+            let proveedores = data.proveedores || data; // fallback
+
+            proveedores.forEach(p => {
+                let selected = (p.id_proveedores == seleccionadoId) ? 'selected' : '';
+                select.append(`<option value="${p.id_proveedores}" ${selected}>${p.nombre_empresa}</option>`);
+            });
+        }
+    });
+}
+
+
     
     // Llamadas iniciales
     $.when(cargarCatalogos(), cargarProveedores()).done(function(catalogoData, proveedoresData) {
