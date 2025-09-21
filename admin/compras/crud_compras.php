@@ -21,7 +21,7 @@ $codigo_institucion_sesion = $_SESSION['codigo_institucion'] ?? '';
 function generarCodigoProducto($pdo, $codigo_categoria, $codigo_institucion_sesion) {
     $nuevo_codigo = "";
     try {
-        $pdo->beginTransaction();
+        //$pdo->beginTransaction();
         $codigo_tipo = 'PRODUCTO_' . $codigo_institucion_sesion;
 
         $sql = "SELECT ultimo_numero FROM correlativos WHERE codigo_tipo = ? FOR UPDATE";
@@ -29,29 +29,31 @@ function generarCodigoProducto($pdo, $codigo_categoria, $codigo_institucion_sesi
         $stmt->execute([$codigo_tipo]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $ultimo_numero = $result ? $result['ultimo_numero'] : 0;
-        $nuevo_numero = $ultimo_numero + 1;
+        $ultimo_numero = $result ? (int)$result['ultimo_numero'] : 0;
+        $nuevo_numero  = $ultimo_numero + 1;
 
         if ($result) {
             $sql_update = "UPDATE correlativos SET ultimo_numero = ? WHERE codigo_tipo = ?";
         } else {
             $sql_update = "INSERT INTO correlativos (ultimo_numero, codigo_tipo) VALUES (?, ?)";
         }
-        
+
         $stmt_update = $pdo->prepare($sql_update);
         $stmt_update->execute([$nuevo_numero, $codigo_tipo]);
 
+        // Armar el nuevo código
         $correlativo_formateado = str_pad($nuevo_numero, 6, '0', STR_PAD_LEFT);
         $nuevo_codigo = $codigo_categoria . $correlativo_formateado;
 
-       // $pdo->commit();
+       // $pdo->commit(); // ✅ IMPORTANTE: guardar la transacción
         return $nuevo_codigo;
 
     } catch (PDOException $e) {
-        //$pdo->rollBack();
-        return "Error en la generación del código: . $nuevo_codigo " . $e->getMessage();
+        //$pdo->rollBack(); // ✅ liberar transacción si hay error
+        return "Error en la generación del código: $nuevo_codigo " . $e->getMessage();
     }
 }
+
 
 // Asegúrate de que la función generarCodigoProveedor esté disponible
 function generarCodigoProveedor($pdo, $codigo_institucion_sesion) {
@@ -253,9 +255,6 @@ switch ($accion) {
         if (!$compra_data || !$productos_data) {
             throw new Exception("Datos de la compra inválidos.");
         }
-        error_log("DEBUG PRODUCTO: " . print_r($productos_data, true));
-        error_log("DEBUG PRODUCTO: " . print_r($compra_data, true));
-
         // 1. Validar/crear proveedor
         $sql_proveedor = "SELECT id_proveedores FROM proveedores WHERE nit = ? AND codigo_institucion = ?";
         $stmt_proveedor = $pdo->prepare($sql_proveedor);
@@ -283,8 +282,8 @@ switch ($accion) {
         $sql_cabecera = "INSERT INTO compras_cabecera (
                 codigo_institucion, numero_documento, tipo_documento, fecha_emision,
                 id_proveedores, condicion_pago, observaciones,
-                total_no_suj, total_exenta, total_gravada, total_iva, total_descuento, total_compra
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                total_no_suj, total_exenta, total_gravada, total_iva, total_descuento, total_compra, tipo_dte, sello_recibido, firma_electronica
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_cabecera = $pdo->prepare($sql_cabecera);
         $stmt_cabecera->execute([
             $codigo_institucion_sesion,
@@ -299,7 +298,10 @@ switch ($accion) {
             $compra_data['resumen']['total_gravada'] ?? 0,
             $compra_data['resumen']['total_iva'] ?? 0,
             $compra_data['resumen']['total_descuento'] ?? 0,
-            $compra_data['resumen']['total_pagar'] ?? 0
+            $compra_data['resumen']['total_pagar'] ?? 0,
+            $compra_data['tipo_dte'],
+            $compra_data['sello_recibido'] ?? null,
+            $compra_data['firma_electronica'] ?? null
         ]);
         $id_compra = $pdo->lastInsertId('compras_cabecera_id_compra_seq');
 
@@ -335,15 +337,15 @@ switch ($accion) {
             } else {
                 // Crear producto nuevo
                 if (empty($producto['codigo_categoria'])) {
-                    $producto['codigo_categoria'] = 'GEN'; // Categoría genérica
+                    $producto['codigo_categoria'] = 'CAT008'; // Categoría genérica
                 }
                 $codigo_producto_generado = generarCodigoProducto($pdo, $producto['codigo_categoria'], $codigo_institucion_sesion);
-
+                //error_log("DEBUG PRODUCTO: " . print($codigo_producto_generado));
                 $sql_insert_producto = "INSERT INTO catalogo_productos (
                     codigo_interno, codigo_institucion, codigo_categoria,
                     descripcion, precio_costo, impuesto_aplicable, unidad_medida,
-                    codigo_proveedor, existencias
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    codigo_proveedor, existencias, fecha_vencimiento, codigo_ganancia
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id_productos";
 
                 $stmt_insert_producto = $pdo->prepare($sql_insert_producto);
@@ -356,7 +358,9 @@ switch ($accion) {
                     $producto['impuesto_aplicable'],
                     $producto['unidad_medida'],
                     $producto['codigo_proveedor'],
-                    $producto['cantidad']
+                    $producto['cantidad'],
+                    $producto['fecha_vencimiento'] ?? null,
+                    $producto['codigo_ganancia'] ?? null
                 ]);
                 $producto['id_productos'] = $stmt_insert_producto->fetchColumn();
                 $producto['codigo_interno'] = $codigo_producto_generado;
@@ -382,8 +386,26 @@ switch ($accion) {
                 $producto['venta_exenta'] ?? 0,
                 $producto['venta_gravada'] ?? 0
             ]);
+
+                    // =============================
+        // 3. ACTUALIZAR INVENTARIO
+        // =============================
+            $sqlUpd = "UPDATE catalogo_productos
+                SET stock_actual = stock_actual + :cantidad,
+                    fecha_vencimiento = COALESCE(:fecha_vencimiento, fecha_vencimiento),
+                    codigo_ganancia = COALESCE(:codigo_ganancia, codigo_ganancia)
+                        WHERE codigo_proveedor = :codigo_proveedor";
+
+                    $stmtUpd = $pdo->prepare($sqlUpd);
+                    $stmtUpd->execute([
+                    ':cantidad'        => $producto['cantidad'],
+                    ':fecha_vencimiento'=> $producto['fecha_vencimiento'] ?? null,
+                    ':codigo_ganancia' => $producto['codigo_ganancia'] ?? null,
+                    ':codigo_proveedor' => $producto['codigo_proveedor']
+                    ]);
         }
 
+        // ============================= comita transacción
         $pdo->commit();
         echo json_encode([
             'respuesta' => true, 
@@ -399,7 +421,6 @@ switch ($accion) {
         ]);
     }
     break;
-
 
     case 'obtenerProveedores':
         try {
