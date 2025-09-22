@@ -2,7 +2,7 @@ $(function () {
     let productosCompra = [];
     let tablaBusquedaProductosDT = null;
     let modoDeGuardado = 'manual';
-    let compraEncabezadoDte = {}; // New global variable to store DTE header data
+    let compraEncabezadoDte = {};
 
     // Controlar la visibilidad de los formularios
     $('#btnManual').on('click', function() {
@@ -155,14 +155,13 @@ $(function () {
         }
     }
 
-   function renderizarTabla() {
+  // ✅ Renderiza tabla y actualiza totales
+function renderizarTabla() {
     let tbody = $('#tablaProductosCompra tbody');
     tbody.empty();
-    let total = 0;
 
     productosCompra.forEach((p, index) => {
         const subtotal = (p.cantidad * p.precio_unitario) - (p.descuento || 0);
-        total += subtotal;
 
         const fila = `
             <tr data-index="${index}">
@@ -193,8 +192,46 @@ $(function () {
         tbody.append(fila);
     });
 
-    $('#totalCompra').text(total.toFixed(2));
+    actualizarTotales();
 }
+
+// ✅ Totales
+function actualizarTotales() {
+    let totalNoSuj = 0;
+    let totalExenta = 0;
+    let totalGravada = 0;
+    let totalIva = 0;
+    let totalDescuento = 0;
+    let totalFinal = 0;
+
+    productosCompra.forEach((p) => {
+        const subtotal = (p.cantidad * p.precio_unitario) - (p.descuento || 0);
+
+        totalNoSuj += parseFloat(p.venta_no_suj || 0);
+        totalExenta += parseFloat(p.venta_exenta || 0);
+        totalGravada += parseFloat(p.venta_gravada || 0);
+
+        // calcular IVA si corresponde
+        if (p.impuesto_aplicable && p.impuesto_aplicable !== '00') {
+            if (p.impuesto_descripcion && p.impuesto_descripcion.includes('%')) {
+                let porcentaje = parseFloat(p.impuesto_descripcion.replace(/[^0-9.]/g, '')) || 0;
+                totalIva += subtotal * (porcentaje / 100);
+            }
+        }
+
+        totalDescuento += parseFloat(p.descuento || 0);
+        totalFinal += subtotal;
+    });
+
+    $('#totalNoSuj').text(totalNoSuj.toFixed(2));
+    $('#totalExenta').text(totalExenta.toFixed(2));
+    $('#totalGravada').text(totalGravada.toFixed(2));
+    $('#totalIva').text(totalIva.toFixed(2));
+    $('#totalDescuento').text(totalDescuento.toFixed(2));
+    $('#totalFinal').text(totalFinal.toFixed(2));
+}
+
+
 
 
     // Evento para detectar cambios en la cantidad o el precio
@@ -300,6 +337,87 @@ $(function () {
         }
     });
 
+
+ $('#buscarProductoModal').on('shown.bs.modal', function() {
+        if (tablaBusquedaProductosDT) {
+            tablaBusquedaProductosDT.ajax.reload();
+        } else {
+            tablaBusquedaProductosDT = $('#tablaBusquedaProductos').DataTable({
+                "processing": true,
+                "serverSide": true,
+                "ajax": {
+                    "url": "admin/compras/crud_compras.php",
+                    "type": "POST",
+                    "data": function (d) {
+                        d.accion = 'buscarProductoDescripcion';
+                    },
+                    "dataSrc": "data"
+                },
+                "columns": [
+                    { "data": "id_productos" },
+                    { "data": "codigo_interno" },
+                     { "data": "codigo_proveedor" }, // 👈 Nueva columna
+                    { "data": "descripcion" },
+                    { "data": "precio_costo", "render": $.fn.dataTable.render.number(',', '.', 2, '$') },
+                    { "data": "impuesto_aplicable" },
+                    { "defaultContent": "<div class='text-center'><button class='btn btn-primary btn-sm btnSeleccionarProductoModal'><i class='fas fa-check me-1'></i>Seleccionar</button></div>" }
+                ],
+                "language": { "url": "php_libs/idioma/es_es.json" }
+            });
+        }
+        $('#tablaBusquedaProductos_filter input').focus();
+    });
+
+    $('#tablaBusquedaProductos tbody').on('click', '.btnSeleccionarProductoModal', async function() {
+    const data = tablaBusquedaProductosDT.row($(this).parents('tr')).data();
+
+    const impuestoInfo = await obtenerDetalleImpuesto(data.impuesto_aplicable);
+    const precioConImpuesto = await calcularPrecioConImpuesto(data.precio_costo, impuestoInfo);
+    const precioUnitarioFinal = await calcularPrecioConGanancia(precioConImpuesto, data.codigo_ganancia);
+
+    const producto = {
+        id_productos: data.id_productos,
+        codigo_interno: data.codigo_interno,
+        codigo_proveedor: data.codigo_proveedor,
+        descripcion: data.descripcion,
+        cantidad: 1,
+        precio_unitario: precioUnitarioFinal,
+        impuesto_aplicable: data.impuesto_aplicable,
+        impuesto_descripcion: impuestoInfo.descripcion_completa,
+        subtotal: precioUnitarioFinal,
+            // 👇 enviar extra
+            impuesto_aplicable: "20",   // cat_015 fijo
+            codigo_ganancia: "GAN001"       // fijo para compras
+    };
+
+    productosCompra.push(producto);
+    renderizarTabla();
+    $('#buscarProductoModal').modal('hide');
+});
+
+$('#tablaProductosCompra tbody').on('click', '.btnEliminarProducto', function() {
+    const index = $(this).data('index');
+
+    Swal.fire({
+        title: '¿Eliminar producto?',
+        text: "Esta acción no se puede deshacer.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            productosCompra.splice(index, 1);
+            renderizarTabla();
+            Swal.fire('Eliminado', 'El producto ha sido eliminado.', 'success');
+        }
+    });
+});
+
+
+
     // Eventos para el formulario de subida de DTE
     $('#formSubirDte').submit(function(e) {
         e.preventDefault();
@@ -370,7 +488,7 @@ $(function () {
         $('#seccionManual').show();
         modoDeGuardado = 'dte'; // Establecer el modo a DTE
     }
-    
+
     // Función para recargar el select de proveedores
     function recargarProveedores(seleccionadoId = null) {
     $.ajax({
@@ -393,7 +511,36 @@ $(function () {
     });
 }
 
+$('#btnAgregarProducto').on('click', async function() {
+        const id = $('#codigoProducto').val();
+        const descripcion = $('#descripcionProducto').val();
+        const impuestoAplicable = $('#impuestoAplicableProducto').val();
+        const codigoGanancia = $('#codigoGananciaProducto').val();
+        const cantidad = parseFloat($('#cantidadProducto').val()) || 0;
+        const precioUnitario = parseFloat($('#precioUnitarioProducto').val()) || 0;
+        
+        if (!id || !descripcion || cantidad <= 0 || precioUnitario <= 0) {
+            toastr.warning('Por favor, complete todos los campos del producto.');
+            return;
+        }
 
+        const subtotal = cantidad * precioUnitario;
+        const impuestoInfo = await obtenerDetalleImpuesto(impuestoAplicable);
+        
+        const producto = {
+            id_productos: id,
+            descripcion: descripcion,
+            cantidad: cantidad,
+            precio_unitario: precioUnitario,
+            impuesto_aplicable: impuestoAplicable,
+            impuesto_descripcion: impuestoInfo.descripcion_completa,
+            subtotal: subtotal
+        };
+
+        productosCompra.push(producto);
+        renderizarTabla();
+        limpiarFormularioProducto();
+    });
     
     // Llamadas iniciales
     $.when(cargarCatalogos(), cargarProveedores()).done(function(catalogoData, proveedoresData) {
