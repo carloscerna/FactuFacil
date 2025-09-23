@@ -175,21 +175,21 @@ try {
 
 
         $sql_detalle = "INSERT INTO compras_detalle 
-            (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva, descuento, impuesto_aplicable, codigo_ganancia) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            (id_compra, codigo_producto, cantidad, precio_unitario, subtotal, iva, descuento, ventas_gravada) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
         $stmt_detalle = $pdo->prepare($sql_detalle);
         $stmt_detalle->execute([
             $id_compra,
             $producto_info['codigo_interno'],
             $producto['cantidad'],
-            $precio_costo,
-            $precio_unitario_final,
-            $subtotal,
-            $iva,
+            number_format($producto['precio_unitario'], 4, '.', ''), // ✅ 4 decimales
+            number_format($producto['subtotal'], 4, '.', ''),        // ✅ 4 decimales
+            $producto['iva'] ?? 0,
             $producto['descuento'] ?? 0,
-            $impuesto_aplicable,
-            $codigo_ganancia
+            $producto['subtotal'] ?? 0
         ]);
+
     }
 
     
@@ -543,73 +543,127 @@ break;
         break;
         
     case 'buscarProductoDescripcion':
-        $draw = $_POST['draw'] ?? 1;
-        $start = $_POST['start'] ?? 0;
-        $length = $_POST['length'] ?? 10;
-        $length = $_POST['length'] ?? 10;
-        $searchValue = $_POST['search']['value'] ?? '';
-        $orderColumnIndex = $_POST['order'][0]['column'] ?? 0;
-        $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
-        $columns = $_POST['columns'] ?? [];
+    $draw = $_POST['draw'] ?? 1;
+    $start = $_POST['start'] ?? 0;
+    $length = $_POST['length'] ?? 10;
+    $searchValue = $_POST['search']['value'] ?? '';
+    $orderColumnIndex = $_POST['order'][0]['column'] ?? 0;
+    $orderDir = $_POST['order'][0]['dir'] ?? 'asc';
 
-        $orderColumns = [
-            'id_productos', 'descripcion', 'precio_costo'
-        ];
-        $orderCol = $orderColumns[$orderColumnIndex] ?? 'id_productos';
+    $orderColumns = ['id_productos', 'descripcion', 'precio_costo'];
+    $orderCol = $orderColumns[$orderColumnIndex] ?? 'id_productos';
 
-        try {
-            $sqlCount = "SELECT COUNT(id_productos) FROM catalogo_productos WHERE codigo_institucion = ?";
-            $stmtCount = $pdo->prepare($sqlCount);
-            $stmtCount->execute([$codigo_institucion_sesion]);
-            $totalRecords = $stmtCount->fetchColumn();
+    try {
+        // Total registros
+        $sqlCount = "SELECT COUNT(id_productos) FROM catalogo_productos WHERE codigo_institucion = ?";
+        $stmtCount = $pdo->prepare($sqlCount);
+        $stmtCount->execute([$codigo_institucion_sesion]);
+        $totalRecords = $stmtCount->fetchColumn();
 
-            $sql = "SELECT id_productos, codigo_interno, descripcion, unidad_medida, precio_costo, impuesto_aplicable, codigo_ganancia, codigo_proveedor
-                    FROM catalogo_productos 
-                    WHERE codigo_institucion = ?";
-            
-            $params = [$codigo_institucion_sesion];
+        // Consulta principal
+        $sql = "SELECT id_productos, codigo_interno, descripcion, unidad_medida, precio_costo, impuesto_aplicable, codigo_ganancia, codigo_proveedor
+                FROM catalogo_productos 
+                WHERE codigo_institucion = ?";
+        $params = [$codigo_institucion_sesion];
 
             if (!empty($searchValue)) {
-                $sql .= " AND (LOWER(descripcion) LIKE LOWER(?) OR LOWER(codigo_interno) LIKE LOWER(?))";
+                $sql .= " AND (
+                    LOWER(descripcion) LIKE LOWER(?) 
+                    OR LOWER(codigo_interno) LIKE LOWER(?) 
+                    OR LOWER(codigo_proveedor) LIKE LOWER(?) 
+                    OR CAST(id_productos AS TEXT) LIKE ? 
+                    OR LOWER(codigo_barra) LIKE LOWER(?)
+                )";
+
+                $params[] = '%' . $searchValue . '%';
+                $params[] = '%' . $searchValue . '%';
+                $params[] = '%' . $searchValue . '%';
                 $params[] = '%' . $searchValue . '%';
                 $params[] = '%' . $searchValue . '%';
             }
 
-            $sql .= " ORDER BY " . $orderCol . " " . strtoupper($orderDir);
-            $sql .= " LIMIT ? OFFSET ?";
-            $params[] = $length;
-            $params[] = $start;
 
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute($params);
-            $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $sql .= " ORDER BY " . $orderCol . " " . strtoupper($orderDir);
+        $sql .= " LIMIT ? OFFSET ?";
+        $params[] = $length;
+        $params[] = $start;
 
-            $totalFiltered = $totalRecords;
-            if (!empty($searchValue)) {
-                $sqlFilterCount = "SELECT COUNT(id_productos) FROM catalogo_productos WHERE codigo_institucion = ? AND (LOWER(descripcion) LIKE LOWER(?) OR LOWER(codigo_interno) LIKE LOWER(?))";
-                $stmtFilterCount = $pdo->prepare($sqlFilterCount);
-                $stmtFilterCount->execute([$codigo_institucion_sesion, '%' . $searchValue . '%', '%' . $searchValue . '%']);
-                $totalFiltered = $stmtFilterCount->fetchColumn();
-            }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            echo json_encode([
-                "draw" => intval($draw),
-                "recordsTotal" => intval($totalRecords),
-                "recordsFiltered" => intval($totalFiltered),
-                "data" => $productos
-            ]);
+       // 🔍 Ajustar precio con impuesto + ganancia
+                foreach ($productos as &$p) {
+                    $precioBase = $p['precio_costo'];
 
-        } catch (PDOException $e) {
-            error_log("Error en buscarProductoDescripcion: " . $e->getMessage());
-            echo json_encode([
-                "draw" => intval($draw),
-                "recordsTotal" => 0,
-                "recordsFiltered" => 0,
-                "data" => [],
-                "error" => "Error al buscar productos: " . $e->getMessage()
-            ]);
+                    // --- Impuesto ---
+                    if (!empty($p['impuesto_aplicable']) && $p['impuesto_aplicable'] !== '00') {
+                        $sqlImp = "SELECT tipo_impuesto, porcentaje, monto_fijo, descripcion 
+                                FROM cat_015 
+                                WHERE codigo = ?";
+                        $stmtImp = $pdo->prepare($sqlImp);
+                        $stmtImp->execute([$p['impuesto_aplicable']]);
+                        $impuesto = $stmtImp->fetch(PDO::FETCH_ASSOC);
+
+                        if ($impuesto) {
+                            if ($impuesto['tipo_impuesto'] === 'PORCENTAJE') {
+                                $precioBase = $precioBase * (1 + ($impuesto['porcentaje'] / 100));
+                            } elseif ($impuesto['tipo_impuesto'] === 'MONETARIO') {
+                                $precioBase = $precioBase + $impuesto['monto_fijo'];
+                            }
+                            $p['impuesto_descripcion'] = $impuesto['descripcion'];
+                        }
+                    }
+
+                    // --- Ganancia ---
+                    if (!empty($p['codigo_ganancia'])) {
+                        $sqlGan = "SELECT porcentaje FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?";
+                        $stmtGan = $pdo->prepare($sqlGan);
+                        $stmtGan->execute([$p['codigo_ganancia'], $codigo_institucion_sesion]);
+                        $gan = $stmtGan->fetch(PDO::FETCH_ASSOC);
+
+                        if ($gan) {
+                            $precioBase = $precioBase * (1 + ($gan['porcentaje'] / 100));
+                        }
+                    }
+
+                    // Guardamos calculado con 4 decimales
+                    $p['precio_unitario_final'] = number_format($precioBase, 4, '.', '');
+                    $p['subtotal'] = number_format($precioBase, 4, '.', ''); // cantidad inicial = 1
+                }
+
+
+        // Conteo filtrado
+        $totalFiltered = $totalRecords;
+        if (!empty($searchValue)) {
+            $sqlFilterCount = "SELECT COUNT(id_productos) 
+                               FROM catalogo_productos 
+                               WHERE codigo_institucion = ? 
+                               AND (LOWER(descripcion) LIKE LOWER(?) OR LOWER(codigo_interno) LIKE LOWER(?))";
+            $stmtFilterCount = $pdo->prepare($sqlFilterCount);
+            $stmtFilterCount->execute([$codigo_institucion_sesion, '%' . $searchValue . '%', '%' . $searchValue . '%']);
+            $totalFiltered = $stmtFilterCount->fetchColumn();
         }
-        break;
+
+        echo json_encode([
+            "draw" => intval($draw),
+            "recordsTotal" => intval($totalRecords),
+            "recordsFiltered" => intval($totalFiltered),
+            "data" => $productos
+        ]);
+
+    } catch (PDOException $e) {
+        error_log("Error en buscarProductoDescripcion: " . $e->getMessage());
+        echo json_encode([
+            "draw" => intval($draw),
+            "recordsTotal" => 0,
+            "recordsFiltered" => 0,
+            "data" => [],
+            "error" => "Error al buscar productos: " . $e->getMessage()
+        ]);
+    }
+    break;
+
 
     case 'listarCompras':
         try {
@@ -931,6 +985,34 @@ break;
                 ]);
             }
             break;
+
+            case 'validarNumeroDocumento':
+                try {
+                    $numero_documento = $_POST['numero_documento'] ?? '';
+
+                    if (empty($numero_documento)) {
+                        echo json_encode(['existe' => false]);
+                        break;
+                    }
+
+                    $sql = "SELECT COUNT(*) FROM compras_cabecera 
+                            WHERE numero_documento = ? AND codigo_institucion = ?";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute([$numero_documento, $codigo_institucion_sesion]);
+                    $count = $stmt->fetchColumn();
+
+                    echo json_encode([
+                        'existe' => $count > 0
+                    ]);
+                } catch (Exception $e) {
+                    echo json_encode([
+                        'existe' => false,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+                break;
+
+
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;

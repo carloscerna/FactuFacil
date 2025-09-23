@@ -4,28 +4,62 @@ $(function () {
     let modoDeGuardado = 'manual';
     let compraEncabezadoDte = {};
 
-    // Controlar la visibilidad de los formularios
-    $('#btnManual').on('click', function() {
+// Función para limpiar todo
+function limpiarPantalla() {
+    $('#formCompra')[0].reset();
+    productosCompra = [];
+    renderizarTabla();
+    $("#totalNoSuj, #totalExenta, #totalGravada, #totalIva, #totalDescuento, #totalFinal").text("0.0000");
+}
+
+// Mostrar secciones con confirmación
+function cambiarModo(modo) {
+    if (productosCompra.length > 0) {
+        Swal.fire({
+            title: "¿Estás seguro?",
+            text: "Se perderán los productos cargados si cambias de modo.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "Sí, cambiar",
+            cancelButtonText: "Cancelar"
+        }).then((result) => {
+            if (result.isConfirmed) {
+                aplicarCambio(modo);
+            }
+        });
+    } else {
+        aplicarCambio(modo);
+    }
+}
+
+// Aplica el cambio de modo
+function aplicarCambio(modo) {
+    limpiarPantalla();
+
+    if (modo === "manual") {
         $('#seccionManual').show();
         $('#seccionDte').hide();
-        modoDeGuardado = 'manual';
-        // Limpiar el formulario y el estado del DTE al cambiar de modo
-        $('#formCompra')[0].reset();
-        productosCompra = [];
-        renderizarTabla();
-        
-    });
-
-    $('#btnDte').on('click', function() {
+    } else {
         $('#seccionManual').hide();
         $('#seccionDte').show();
-        modoDeGuardado = 'dte';
-        console.log(modoDeGuardado);
-        // Limpiar el formulario al cambiar de modo
-        $('#formCompra')[0].reset();
-        productosCompra = [];
-        renderizarTabla();
-    });
+    }
+
+    modoDeGuardado = modo;
+    console.log("Modo cambiado a:", modoDeGuardado);
+}
+
+// Botones
+$('#btnManual').on('click', function() {
+    cambiarModo('manual');
+});
+
+$('#btnDte').on('click', function() {
+    cambiarModo('dte');
+});
+
+
 
     async function obtenerDetalleImpuesto(codigo_impuesto) {
         if (!codigo_impuesto || codigo_impuesto === '00') {
@@ -156,44 +190,69 @@ $(function () {
     }
 
   // ✅ Renderiza tabla y actualiza totales
-function renderizarTabla() {
-    let tbody = $('#tablaProductosCompra tbody');
-    tbody.empty();
+        function renderizarTabla() {
+            const tbody = $("#tablaProductosCompra tbody");
+            tbody.empty();
 
-    productosCompra.forEach((p, index) => {
-        const subtotal = (p.cantidad * p.precio_unitario) - (p.descuento || 0);
+            productosCompra.forEach((prod, index) => {
+                const subtotal = (prod.cantidad * parseFloat(prod.precio_unitario)).toFixed(4);
 
-        const fila = `
-            <tr data-index="${index}">
-                <td>${p.codigo_interno || '<span class="text-muted">Auto</span>'}</td>
-                <td>${p.codigo_proveedor || ''}</td>
-                <td class="text-end">
-                    <input type="number" class="form-control form-control-sm text-end input-cantidad" 
-                           value="${p.cantidad}" min="0.01" step="0.01" data-index="${index}">
-                </td>
-                <td>${p.unidad_medida || ''}</td>
-                <td>${p.descripcion}</td>
-                <td class="text-end">
-                    <input type="number" class="form-control form-control-sm text-end input-precio" 
-                           value="${(p.precio_unitario || 0).toFixed(2)}" min="0.01" step="0.01" data-index="${index}">
-                </td>
-                <td class="text-end">${(p.descuento || 0).toFixed(2)}</td>
-                <td class="text-end">${(p.venta_no_suj || 0).toFixed(2)}</td>
-                <td class="text-end">${(p.venta_exenta || 0).toFixed(2)}</td>
-                <td class="text-end">${(p.venta_gravada || 0).toFixed(2)}</td>
-                <td class="text-end subtotal-row">${subtotal.toFixed(2)}</td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-danger btn-sm btnEliminarProducto" data-index="${index}">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </td>
-            </tr>
-        `;
-        tbody.append(fila);
+                const row = `
+                    <tr>
+                        <td>${prod.codigo_interno}</td>
+                        <td>${prod.codigo_proveedor}</td>
+                        <td>
+                            <input type="number" step="0.01" min="0" 
+                                class="form-control form-control-sm inputCantidad" 
+                                data-index="${index}" 
+                                value="${parseFloat(prod.cantidad).toFixed(2)}">
+                        </td>
+                        <td>${prod.unidad_medida ?? ''}</td>
+                        <td>${prod.descripcion}</td>
+                        <td>
+                            <input type="number" step="0.0001" min="0" 
+                                class="form-control form-control-sm inputPrecio" 
+                                data-index="${index}" 
+                                value="${parseFloat(prod.precio_unitario).toFixed(4)}">
+                        </td>
+                        <td class="text-end">${parseFloat(prod.descuento ?? 0).toFixed(4)}</td>
+                        <td class="text-end">${parseFloat(prod.ventas_no_sujetas ?? 0).toFixed(4)}</td>
+                        <td class="text-end">${parseFloat(prod.ventas_exentas ?? 0).toFixed(4)}</td>
+                        <td class="text-end">${parseFloat(prod.ventas_gravadas ?? 0).toFixed(4)}</td>
+                        <td class="text-end">${subtotal}</td>
+                        <td>
+                            <button type="button" class="btn btn-danger btn-sm btnEliminarProducto" data-index="${index}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.append(row);
+
+                prod.subtotal = parseFloat(subtotal).toFixed(4); // ✅ mantenemos redondeado
+            });
+
+            actualizarTotales();
+        }
+
+    // Editar cantidad
+    $(document).on('input', '.inputCantidad', function() {
+        const index = $(this).data('index');
+        const nuevaCantidad = parseFloat($(this).val()) || 0;
+        productosCompra[index].cantidad = nuevaCantidad;
+        productosCompra[index].subtotal = (nuevaCantidad * parseFloat(productosCompra[index].precio_unitario)).toFixed(4);
+        renderizarTabla();
     });
 
-    actualizarTotales();
-}
+    // Editar precio unitario
+    $(document).on('input', '.inputPrecio', function() {
+        const index = $(this).data('index');
+        const nuevoPrecio = parseFloat($(this).val()) || 0;
+        productosCompra[index].precio_unitario = nuevoPrecio.toFixed(4);
+        productosCompra[index].subtotal = (parseFloat(productosCompra[index].cantidad) * nuevoPrecio).toFixed(4);
+        renderizarTabla();
+    });
+
 
 // ✅ Totales
 function actualizarTotales() {
@@ -362,38 +421,48 @@ function actualizarTotales() {
                     { "data": "impuesto_aplicable" },
                     { "defaultContent": "<div class='text-center'><button class='btn btn-primary btn-sm btnSeleccionarProductoModal'><i class='fas fa-check me-1'></i>Seleccionar</button></div>" }
                 ],
+                columnDefs: [
+                        {
+                            targets: [4], // columna precio_costo o precio_unitario
+                            render: function(data, type, row) {
+                                return parseFloat(data).toFixed(4); // ✅ 4 decimales
+                            }
+                        },
+                        {
+                            targets: [5], // columna subtotal
+                            render: function(data, type, row) {
+                                return parseFloat(data).toFixed(4); // ✅ 4 decimales
+                            }
+                        }
+                    ],
                 "language": { "url": "php_libs/idioma/es_es.json" }
             });
         }
         $('#tablaBusquedaProductos_filter input').focus();
     });
 
-    $('#tablaBusquedaProductos tbody').on('click', '.btnSeleccionarProductoModal', async function() {
-    const data = tablaBusquedaProductosDT.row($(this).parents('tr')).data();
+    $('#tablaBusquedaProductos tbody').on('click', '.btnSeleccionarProductoModal', function() {
+        const data = tablaBusquedaProductosDT.row($(this).parents('tr')).data();
 
-    const impuestoInfo = await obtenerDetalleImpuesto(data.impuesto_aplicable);
-    const precioConImpuesto = await calcularPrecioConImpuesto(data.precio_costo, impuestoInfo);
-    const precioUnitarioFinal = await calcularPrecioConGanancia(precioConImpuesto, data.codigo_ganancia);
+        const producto = {
+            id_productos: data.id_productos,
+            codigo_interno: data.codigo_interno,
+            codigo_proveedor: data.codigo_proveedor,
+            descripcion: data.descripcion,
+            cantidad: 1,
+            precio_unitario: parseFloat(data.precio_unitario_final).toFixed(4), // ✅ ya con 4 decimales
+            impuesto_aplicable: data.impuesto_aplicable,
+            impuesto_descripcion: data.impuesto_descripcion,
+            codigo_ganancia: data.codigo_ganancia,
+            subtotal: parseFloat(data.subtotal).toFixed(4) // ✅ 4 decimales
+        };
 
-    const producto = {
-        id_productos: data.id_productos,
-        codigo_interno: data.codigo_interno,
-        codigo_proveedor: data.codigo_proveedor,
-        descripcion: data.descripcion,
-        cantidad: 1,
-        precio_unitario: precioUnitarioFinal,
-        impuesto_aplicable: data.impuesto_aplicable,
-        impuesto_descripcion: impuestoInfo.descripcion_completa,
-        subtotal: precioUnitarioFinal,
-            // 👇 enviar extra
-            impuesto_aplicable: "20",   // cat_015 fijo
-            codigo_ganancia: "GAN001"       // fijo para compras
-    };
+        productosCompra.push(producto);
+        renderizarTabla();
+        $('#buscarProductoModal').modal('hide');
+    });
 
-    productosCompra.push(producto);
-    renderizarTabla();
-    $('#buscarProductoModal').modal('hide');
-});
+
 
 $('#tablaProductosCompra tbody').on('click', '.btnEliminarProducto', function() {
     const index = $(this).data('index');
@@ -548,4 +617,37 @@ $('#btnAgregarProducto').on('click', async function() {
     }).fail(function() {
         toastr.error('Error al cargar catálogos y proveedores.');
     });
+
+    $(document).on('blur', '#numero_documento', function() {
+        const numeroDocumento = $(this).val().trim();
+
+        if (numeroDocumento !== '') {
+            $.ajax({
+                url: 'admin/compras/crud_compras.php',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    accion: 'validarNumeroDocumento',
+                    numero_documento: numeroDocumento
+                },
+                success: function(response) {
+                    if (response.existe) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Documento duplicado',
+                            text: 'El número de documento ya está registrado en otra compra.',
+                            confirmButtonText: 'Entendido'
+                        });
+
+                        // limpiar campo para forzar que ingrese otro número
+                        $('#numero_documento').val('').focus();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error en validación de número de documento:", error);
+                }
+            });
+        }
+    });
+
 });
