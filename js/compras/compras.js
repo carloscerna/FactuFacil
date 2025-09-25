@@ -485,54 +485,84 @@ $('#tablaProductosCompra tbody').on('click', '.btnEliminarProducto', function() 
     });
 });
 
+// Eventos para el formulario de subida de DTE
+$('#formSubirDte').submit(function(e) {
+    e.preventDefault();
+    const fileInput = $('#json_file')[0];
+    if (fileInput.files.length === 0) {
+        toastr.error('Por favor, seleccione un archivo JSON.');
+        return;
+    }
 
+    const formData = new FormData(this);
+    formData.append('accion', 'procesarJsonDte');
 
-    // Eventos para el formulario de subida de DTE
-    $('#formSubirDte').submit(function(e) {
-        e.preventDefault();
-        const fileInput = $('#json_file')[0];
-        if (fileInput.files.length === 0) {
-            toastr.error('Por favor, seleccione un archivo JSON.');
-            return;
-        }
+    $.ajax({
+        url: 'admin/compras/crud_compras.php',
+        type: 'POST',
+        dataType: 'json',
+        data: formData,
+        contentType: false,
+        processData: false,
+        success: function(response) {
+            if (response.respuesta) {
+                toastr.success('DTE procesado. Verifique los datos para guardar la compra.');
+                mostrarVistaPrevia(response.compra, response.productos);
 
-        const formData = new FormData(this);
-        formData.append('accion', 'procesarJsonDte');
-
-        $.ajax({
-            url: 'admin/compras/crud_compras.php',
-            type: 'POST',
-            dataType: 'json',
-            data: formData,
-            contentType: false,
-            processData: false,
-            success: function(response) {
-                if (response.respuesta) {
-                    toastr.success('DTE procesado. Verifique los datos para guardar la compra.');
-                    mostrarVistaPrevia(response.compra, response.productos);
-
-                        // Recargar proveedores si el backend devolvió un proveedor
-                            if (response.compra.proveedor_id) {
-                                recargarProveedores(response.compra.proveedor_id);
-                            }
-                        // Mostrar resumen en el footer
-                            if (response.compra.resumen) {
-                                $('#totalNoSuj').text(parseFloat(response.compra.resumen.total_no_suj).toFixed(2));
-                                $('#totalExenta').text(parseFloat(response.compra.resumen.total_exenta).toFixed(2));
-                                $('#totalGravada').text(parseFloat(response.compra.resumen.total_gravada).toFixed(2));
-                                $('#totalIva').text(parseFloat(response.compra.resumen.total_iva).toFixed(2));
-                                $('#totalDescuento').text(parseFloat(response.compra.resumen.total_descuento).toFixed(2));
-                                $('#totalFinal').text(parseFloat(response.compra.resumen.total_pagar).toFixed(2));
-                            }
-                } else {
-                    toastr.error('Error: ' + response.mensaje);
+                // Recargar proveedores si el backend devolvió un proveedor
+                if (response.compra.proveedor_id) {
+                    recargarProveedores(response.compra.proveedor_id);
                 }
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                toastr.error('Error al procesar el DTE: ' + textStatus + ', ' + errorThrown);
+
+                // Mostrar resumen en el footer
+                if (response.compra.resumen) {
+                    $('#totalNoSuj').text(parseFloat(response.compra.resumen.total_no_suj).toFixed(2));
+                    $('#totalExenta').text(parseFloat(response.compra.resumen.total_exenta).toFixed(2));
+                    $('#totalGravada').text(parseFloat(response.compra.resumen.total_gravada).toFixed(2));
+                    $('#totalIva').text(parseFloat(response.compra.resumen.total_iva).toFixed(2));
+                    $('#totalDescuento').text(parseFloat(response.compra.resumen.total_descuento).toFixed(2));
+                    $('#totalFinal').text(parseFloat(response.compra.resumen.total_pagar).toFixed(2));
+                }
+
+                // 🔍 Validar número de documento después de procesar el JSON
+                if (response.compra.numero_control) {
+                    $.ajax({
+                        url: 'admin/compras/crud_compras.php',
+                        type: 'POST',
+                        dataType: 'json',
+                        data: {
+                            accion: 'validarNumeroDocumento',
+                            numero_documento: response.compra.numero_control
+                        },
+                        success: function(resp) {
+                            if (resp.existe) {
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Documento duplicado',
+                                    text: 'El número de documento ya está registrado en otra compra.',
+                                    confirmButtonText: 'Entendido'
+                                }).then(() => {
+                                    // limpiar vista previa y formulario
+                                    $('#numero_documento').val('');
+                                    productosCompra = [];
+                                    renderizarTabla();
+                                });
+                            }
+                        }
+                    });
+                }
+
+            } else {
+                toastr.error('Error: ' + response.mensaje);
             }
-        });
+        },
+        error: function(jqXHR, textStatus, errorThrown) {
+            toastr.error('Error al procesar el DTE: ' + textStatus + ', ' + errorThrown);
+        }
     });
+});
+
+
 
     // Muestra la vista previa del DTE en el formulario de registro manual
     function mostrarVistaPrevia(compra, productos) {
