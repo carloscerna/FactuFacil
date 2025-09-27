@@ -496,10 +496,63 @@ break;
         }
 
         // ============================= comita transacción
+          // =========================================================
+        // 4. INTEGRACIÓN CONTABLE AUTOMÁTICA
+        // =========================================================
+
+        // A. OBTENER LAS CLAVES DE MAFEO (Necesitas estas cuentas configuradas)
+        // Usamos una cuenta genérica para el costo/inventario.
+        // Asumimos que el tipo de pago es CRÉDITO para este ejemplo.
+        $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
+        $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
+        $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+        
+        // B. CALCULAR LOS MONTOS
+        $total_gravada = $compra_data['resumen']['total_gravada'] ?? 0;
+        $total_exenta_nosuj = ($compra_data['resumen']['total_exenta'] ?? 0) + ($compra_data['resumen']['total_no_suj'] ?? 0);
+        $total_iva = $compra_data['resumen']['total_iva'] ?? 0;
+        $total_compra = $compra_data['resumen']['total_pagar'] ?? 0; // Total a pagar al proveedor
+
+        // C. CONSTRUIR EL ASIENTO (Partida Doble)
+
+        $datos_encabezado = [
+            'fechaAsiento' => $compra_data['fecha_emision'] ?? date('Y-m-d'), 
+            'tipoAsiento' => 'Egreso', // Tipo de póliza
+            'concepto' => "Registro automático de Compra DTE No. " . $compra_data['numero_control'] . " del proveedor " . $compra_data['emisor_nombre'],
+            'usuarioRegistro' => $usuario_activo // Usar la sesión actual
+        ];
+
+        $datos_detalle = [
+            // LÍNEA 1: DÉBITO - Inventario (Costo de la mercancía sin IVA)
+            ['cuenta_id' => $id_inventario, 'debito' => $total_gravada + $total_exenta_nosuj, 'credito' => 0.00],
+            
+            // LÍNEA 2: DÉBITO - IVA Crédito Fiscal (El IVA que se tiene a favor)
+            ['cuenta_id' => $id_iva_credito, 'debito' => $total_iva, 'credito' => 0.00],
+            
+            // LÍNEA 3: CRÉDITO - Proveedores (Pasivo, la deuda total)
+            ['cuenta_id' => $id_proveedores_cp, 'debito' => 0.00, 'credito' => $total_compra],
+        ];
+
+        // D. VALIDACIÓN Y REGISTRO
+        $resultado_contable = registrarAsientoAutomatico(
+            $pdo, 
+            $codigo_institucion_sesion, 
+            $datos_encabezado, 
+            $datos_detalle
+        );
+
+        if (!$resultado_contable['respuesta']) {
+            // Si el asiento falla, lanza una excepción para hacer ROLLBACK de TODA la compra.
+            throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
+        }
+
+        // =============================
+        // FINAL DE LA TRANSACCIÓN
+        // =============================
         $pdo->commit();
         echo json_encode([
             'respuesta' => true, 
-            'mensaje'   => 'Compra guardada exitosamente.', 
+            'mensaje'   => 'Compra guardada y asiento contable No. ' . $resultado_contable['numero_asiento'] . ' registrado exitosamente.', 
             'id_compra' => $id_compra
         ]);
 

@@ -1,0 +1,374 @@
+
+{# views/contabilidad/cuentas/catalogo_cuentas.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center rounded-top-3">
+            <h2 class="mb-0"><i class="fas fa-list-alt"></i> Catálogo de Cuentas Contables</h2>
+            <div>
+                <button id="btnClonarCatalogo" class="btn btn-warning me-2 text-dark">
+                    <i class="fas fa-copy"></i> Clonar Base
+                </button>
+                <button id="btnNuevaCuenta" class="btn btn-light" data-bs-toggle="modal" data-bs-target="#cuentaModal">
+                    <i class="fas fa-plus-circle"></i> Nueva Cuenta
+                </button>
+            </div>
+        </div>
+        
+        <div class="card-body p-4">
+            <table id="tablaCuentas" class="table table-striped table-hover" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Nivel</th>
+                        <th>Naturaleza</th>
+                        <th>Mayor</th>
+                        <th>C. Costo</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cuentaModal" tabindex="-1" aria-labelledby="cuentaModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="cuentaModalLabel">Crear Nueva Cuenta</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formCuenta">
+                    <input type="hidden" id="cuentaId" name="id">
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="codigo" class="form-label">Código</label>
+                            <input type="text" class="form-control" id="codigo" name="codigo" required placeholder="Ej: 110101">
+                        </div>
+                        <div class="col-md-8 mb-3">
+                            <label for="nombre" class="form-label">Nombre</label>
+                            <input type="text" class="form-control" id="nombre" name="nombre" required placeholder="Ej: Caja General">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="tipo_cuenta" class="form-label">Tipo de Cuenta</label>
+                            <select class="form-select" id="tipo_cuenta" name="tipo_cuenta" required>
+                                <option value="">Seleccione...</option>
+                                <option value="Activo">Activo</option>
+                                <option value="Pasivo">Pasivo</option>
+                                <option value="Patrimonio">Patrimonio</option>
+                                <option value="Ingreso">Ingreso</option>
+                                <option value="Costo">Costo</option>
+                                <option value="Gasto">Gasto</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="naturaleza" class="form-label">Naturaleza</label>
+                            <select class="form-select" id="naturaleza" name="naturaleza" required>
+                                <option value="">Seleccione...</option>
+                                <option value="Deudor">Deudor</option>
+                                <option value="Acreedor">Acreedor</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="padre_id" class="form-label">Cuenta Padre (Agrupación)</label>
+                        <select class="form-select" id="padre_id" name="padre_id">
+                            <option value="">(Nivel 1 - Sin Padre)</option>
+                        </select>
+                        <div class="form-text">Al seleccionar un padre, el nivel de la cuenta se calcula automáticamente.</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" value="1" id="es_cuenta_mayor" name="es_cuenta_mayor">
+                                <label class="form-check-label" for="es_cuenta_mayor">Es Cuenta de Mayor</label>
+                                <div class="form-text">Si está marcada, esta cuenta solo agrupa, no recibe movimientos directos.</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" value="1" id="requiere_centro_costo" name="requiere_centro_costo">
+                                <label class="form-check-label" for="requiere_centro_costo">Requiere Centro de Costo</label>
+                                <div class="form-text">Obliga a asignar un centro de costo en los asientos.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100 mt-3">Guardar Cuenta</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<!-- <script src="./js/contabilidad/catalogo/catalogo_cuentas.js"></script> -->
+<script>
+    $(document).ready(function() {
+        
+        // La URL de tu API PHP
+        const API_URL = 'admin/contabilidad/cuentas/crud_cuentas.php';
+        // Referencia al modal de Bootstrap
+        const cuentaModal = new bootstrap.Modal(document.getElementById('cuentaModal'));
+
+        // --------------------------------------------------------------------------------
+        // 1. INICIALIZACIÓN DE DATATABLES
+        // --------------------------------------------------------------------------------
+        var tablaCuentas = $('#tablaCuentas').DataTable({
+            "processing": true,
+            "ajax": {
+                "url": API_URL + "?accion=list",
+                "type": "GET",
+                "dataSrc": "data" 
+            },
+            "columns": [
+                { "data": "codigo" },
+                { "data": "nombre" },
+                { "data": "tipo_cuenta" },
+                { "data": "nivel_jerarquia" },
+                { "data": "naturaleza" },
+                { "data": "es_cuenta_mayor", 
+                  "render": function(data) { return data ? '<i class="fas fa-check-circle text-success"></i>' : '<i class="fas fa-times-circle text-danger"></i>'; } 
+                },
+                { "data": "requiere_centro_costo", 
+                  "render": function(data) { return data ? '<i class="fas fa-check-circle text-success"></i>' : ''; } 
+                },
+                { 
+                    "data": "id",
+                    "orderable": false,
+                    "render": function(data, type, row) {
+                        return '<button class="btn btn-sm btn-info me-1 btn-edit" data-id="' + data + '"><i class="fas fa-edit"></i></button>' +
+                               '<button class="btn btn-sm btn-danger btn-delete" data-id="' + data + '"><i class="fas fa-trash-alt"></i></button>';
+                    }
+                }
+            ],
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json" 
+            },
+            // =========================================================
+            // MODIFICACIONES CLAVE PARA LA PAGINACIÓN
+            // =========================================================
+            "paging": true,          // <--- Asegura que la paginación esté activada
+            "pageLength": 10,        // <--- Establece 10 filas por defecto
+            "lengthMenu": [ [10, 25, 50, -1], [10, 25, 50, "Todos"] ] // Opciones para el selector de cantidad de filas
+            // =========================================================
+        });
+
+        // --------------------------------------------------------------------------------
+        // 2. FUNCIÓN PARA CARGAR CUENTAS PADRE (SELECT)
+        // --------------------------------------------------------------------------------
+        function cargarCuentasPadre(selectedId = null) {
+            $.ajax({
+                url: API_URL + '?accion=list_parents',
+                type: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    if (response.respuesta) {
+                        let select = $('#padre_id');
+                        select.empty(); 
+                        select.append('<option value="">(Nivel 1 - Sin Padre)</option>');
+                        
+                        response.padres.forEach(function(cuenta) {
+                            // Añadimos guiones para mostrar la jerarquía
+                            let prefix = '-'.repeat(cuenta.nivel_jerarquia); 
+                            let isSelected = selectedId == cuenta.id ? 'selected' : '';
+                            select.append('<option value="' + cuenta.id + '" ' + isSelected + '>' + prefix + ' ' + cuenta.codigo + ' - ' + cuenta.nombre + '</option>');
+                        });
+                    } else {
+                        Swal.fire('Error', response.mensaje, 'error');
+                    }
+                }
+            });
+        }
+
+        // Cargar cuentas padre y limpiar el modal al hacer clic en "Nueva Cuenta"
+        $('#btnNuevaCuenta').on('click', function() {
+            $('#formCuenta')[0].reset(); // Limpiar el formulario
+            $('#cuentaId').val(''); // Asegurar que no haya ID (modo CREACIÓN)
+            $('#cuentaModalLabel').text('Crear Nueva Cuenta');
+            cargarCuentasPadre();
+        });
+
+        // --------------------------------------------------------------------------------
+        // 3. MANEJO DEL FORMULARIO (CREAR/ACTUALIZAR)
+        // --------------------------------------------------------------------------------
+        $('#formCuenta').on('submit', function(e) {
+            e.preventDefault();
+            
+            let formData = $(this).serialize();
+            // Determinar la acción: si hay ID oculto, es ACTUALIZAR, si no, es CREAR
+            let accion = $('#cuentaId').val() ? 'update' : 'create'; 
+            
+            formData += '&accion=' + accion;
+            
+            $.ajax({
+                url: API_URL,
+                type: 'POST',
+                data: formData,
+                dataType: 'json',
+                success: function(response) {
+                    if (response.respuesta) {
+                        Swal.fire('¡Éxito!', response.mensaje, 'success');
+                        cuentaModal.hide(); 
+                        tablaCuentas.ajax.reload(); // Recargar DataTables
+                    } else {
+                        Swal.fire('Error', response.mensaje, 'error');
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    Swal.fire('Error de Conexión', 'Hubo un problema de red o en el servidor.', 'error');
+                }
+            });
+        });
+        
+        // --------------------------------------------------------------------------------
+        // 4. LÓGICA DE CLONACIÓN
+        // --------------------------------------------------------------------------------
+        $('#btnClonarCatalogo').on('click', function() {
+            Swal.fire({
+                title: "¿Clonar Catálogo Base?",
+                text: "Esto copiará el Plan Contable Modelo (Cuentas de la plantilla 'MODEL') a su institución. Si ya tiene cuentas, deberá borrarlas manualmente.",
+                icon: "warning",
+                showCancelButton: true,
+                confirmButtonColor: "#3085d6",
+                cancelButtonColor: "#d33",
+                confirmButtonText: "Sí, clonar ahora"
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $.ajax({
+                        url: API_URL + '?accion=clone_base', // La acción está en el GET, pero se envía por POST
+                        type: 'POST', 
+                        dataType: 'json',
+                        success: function(response) {
+                            if (response.success) {
+                                Swal.fire('¡Clonado!', response.message, 'success');
+                                tablaCuentas.ajax.reload(); 
+                            } else {
+                                Swal.fire('Error', response.message, 'error');
+                            }
+                        },
+                        error: function() {
+                            Swal.fire('Error de Conexión', 'Hubo un problema al comunicarse con el servidor.', 'error');
+                        }
+                    });
+                }
+            });
+        });
+
+        // ********************************************************************************
+        // TAREA PENDIENTE: Implementar lógica de Edición y Eliminación (Siguiente paso)
+        // ********************************************************************************
+            // Evento delegado para el botón de Editar (btn-edit)
+            $('#tablaCuentas tbody').on('click', '.btn-edit', function() {
+                const id = $(this).data('id');
+                
+                $.ajax({
+                    url: API_URL + '?accion=get&id=' + id,
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        if (response.respuesta) {
+                            const cuenta = response.cuenta;
+                            
+                            // Limpiar y poblar campos
+                            $('#formCuenta')[0].reset();
+                            $('#cuentaId').val(cuenta.id);
+                            $('#codigo').val(cuenta.codigo);
+                            $('#nombre').val(cuenta.nombre);
+                            $('#tipo_cuenta').val(cuenta.tipo_cuenta);
+                            $('#naturaleza').val(cuenta.naturaleza);
+                            
+                            // Checkboxes: PostgreSQL devuelve 't'/'f' o 1/0, JS lo maneja como booleano
+                            $('#es_cuenta_mayor').prop('checked', cuenta.es_cuenta_mayor);
+                            $('#requiere_centro_costo').prop('checked', cuenta.requiere_centro_costo);
+                            
+                            // Cargar select de cuentas padre y seleccionar el valor actual
+                            cargarCuentasPadre(cuenta.padre_id);
+                            
+                            $('#cuentaModalLabel').text('Editar Cuenta: ' + cuenta.codigo);
+                            cuentaModal.show();
+                            
+                        } else {
+                            Swal.fire('Error', response.mensaje, 'error');
+                        }
+                    },
+                    error: function() {
+                        Swal.fire('Error', 'No se pudo obtener la cuenta para edición.', 'error');
+                    }
+                });
+            });
+
+
+            // --------------------------------------------------------------------------------
+            // 6. LÓGICA DE ELIMINACIÓN
+            // --------------------------------------------------------------------------------
+
+            // Evento delegado para el botón de Eliminar (btn-delete)
+            $('#tablaCuentas tbody').on('click', '.btn-delete', function() {
+                const id = $(this).data('id');
+
+                Swal.fire({
+                    title: "¿Está seguro?",
+                    text: "¡No podrá revertir esta acción!",
+                    icon: "warning",
+                    showCancelButton: true,
+                    confirmButtonColor: "#d33",
+                    cancelButtonColor: "#3085d6",
+                    confirmButtonText: "Sí, eliminar",
+                    cancelButtonText: "Cancelar"
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $.ajax({
+                            url: API_URL,
+                            type: 'POST',
+                            data: { accion: 'delete', id: id },
+                            dataType: 'json',
+                            success: function(response) {
+                                if (response.respuesta) {
+                                    Swal.fire('¡Eliminado!', response.mensaje, 'success');
+                                    tablaCuentas.ajax.reload();
+                                } else {
+                                    Swal.fire('Error', response.mensaje, 'error');
+                                }
+                            },
+                            error: function() {
+                                Swal.fire('Error de Conexión', 'No se pudo contactar al servidor para eliminar.', 'error');
+                            }
+                        });
+                    }
+                });
+            });
+    });
+</script>
+{% endblock %}
+
+{% block estilos %}
+{{ parent() }}
+<style>
+        /* Estilo para hacer la tabla más compacta */
+        #tablaCuentas tbody tr td {
+            font-size: 0.9em; 
+            vertical-align: middle;
+        }
+        /* Estilo para el hover de filas en la tabla */
+        #tablaCuentas tbody tr:hover {
+            background-color: #f1f1f1;
+        }
+    </style>
+{% endblock %}

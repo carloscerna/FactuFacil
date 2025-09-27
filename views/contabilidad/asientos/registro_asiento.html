@@ -1,0 +1,283 @@
+{# views/contabilidad/registro_asiento.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-5">
+    <div class="card shadow-lg rounded-3">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Registro de Póliza de Diario</h3>
+        </div>
+        <div class="card-body p-4">
+            
+            <form id="formAsientoContable">
+                <h5 class="mb-3 text-primary">Datos del Comprobante</h5>
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <label for="fechaAsiento" class="form-label">Fecha del Asiento</label>
+                        <input type="date" class="form-control" id="fechaAsiento" name="fechaAsiento" required value="<?php echo date('Y-m-d'); ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="tipoAsiento" class="form-label">Tipo de Póliza</label>
+                        <select class="form-select" id="tipoAsiento" name="tipoAsiento" required>
+                            <option value="Diario">Diario</option>
+                            <option value="Ingreso">Ingreso</option>
+                            <option value="Egreso">Egreso</option>
+                            <option value="Ajuste">Ajuste</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="numeroAsiento" class="form-label">Número de Póliza</label>
+                        <input type="text" class="form-control" id="numeroAsiento" name="numeroAsiento" placeholder="Auto-generado" readonly>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label for="concepto" class="form-label">Concepto / Descripción General</label>
+                    <textarea class="form-control" id="concepto" name="concepto" rows="2" required placeholder="Ej: Registro de Venta No. X a Crédito"></textarea>
+                </div>
+
+                <hr>
+                <h5 class="mb-3 text-primary">Detalle de la Partida Doble</h5>
+                
+                <div class="table-responsive">
+                    <table id="detalleAsientosTable" class="table table-bordered table-striped">
+                        <thead>
+                            <tr>
+                                <th style="width: 35%;">Cuenta Contable</th>
+                                <th style="width: 20%;">Débito ($)</th>
+                                <th style="width: 20%;">Crédito ($)</th>
+                                <th style="width: 15%;">C. Costo</th>
+                                <th style="width: 10%;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            </tbody>
+                        <tfoot>
+                            <tr class="table-light">
+                                <td class="text-end fw-bold">SUMAS:</td>
+                                <td><input type="text" class="form-control-plaintext fw-bold text-success" id="totalDebito" value="0.00" readonly></td>
+                                <td><input type="text" class="form-control-plaintext fw-bold text-danger" id="totalCredito" value="0.00" readonly></td>
+                                <td></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-between mt-3">
+                    <button type="button" class="btn btn-secondary" id="btnAddRow"><i class="fas fa-plus"></i> Añadir Línea</button>
+                    <button type="submit" class="btn btn-success btn-lg" id="btnGuardarAsiento" disabled>
+                        <i class="fas fa-save"></i> Guardar Asiento
+                    </button>
+                </div>
+                
+                <div id="balanceAlert" class="alert alert-danger mt-3 d-none" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i> **¡ERROR DE BALANCE!** Débito y Crédito deben ser iguales. Diferencia: $<span id="balanceDiferencia">0.00</span>
+                </div>
+                
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<!-- <script src="./js/contabilidad/registro_asiento.js"></script> -->
+<script>
+    // URL de tu API PHP
+    const API_URL = 'admin/contabilidad/cuentas/crud_cuentas.php'; // Usaremos esta API para obtener las cuentas
+
+    // Almacenará el HTML de las opciones del select de cuentas
+    let cuentasSelectOptions = ''; 
+    let rowCount = 0; // Contador para IDs de filas dinámicas
+
+    $(document).ready(function() {
+        
+        // --------------------------------------------------------------------------------
+        // 1. PRECARGA DE CUENTAS CONTABLES
+        // --------------------------------------------------------------------------------
+        function cargarCuentasContables() {
+            // Se asume una acción para listar TODAS las cuentas (no solo las mayores)
+            $.ajax({
+                url: API_URL + '?accion=list_all_cuentas', 
+                type: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    if (response.data && response.data.length > 0) {
+                        let options = '<option value="">Seleccione Cuenta...</option>';
+                        response.data.forEach(function(cuenta) {
+                            // Usamos el nivel para indentar y facilitar la lectura
+                            let prefix = '-'.repeat(cuenta.nivel_jerarquia - 1); 
+                            options += `<option value="${cuenta.id}" data-codigo="${cuenta.codigo}">${prefix} ${cuenta.codigo} - ${cuenta.nombre}</option>`;
+                        });
+                        cuentasSelectOptions = options;
+                        addRow(); // Añadir la primera línea después de cargar las cuentas
+                    } else {
+                        Swal.fire('Error', 'No se pudo cargar el catálogo de cuentas.', 'error');
+                    }
+                },
+                error: function() {
+                    Swal.fire('Error', 'Fallo al comunicarse con la API de cuentas.', 'error');
+                }
+            });
+        }
+        
+        // Cargar las cuentas al iniciar
+        cargarCuentasContables();
+
+        // --------------------------------------------------------------------------------
+        // 2. LÓGICA DE AÑADIR/ELIMINAR FILAS
+        // --------------------------------------------------------------------------------
+        
+        // Función para crear una nueva fila de detalle
+        function addRow() {
+            rowCount++;
+            const newRow = `
+                <tr data-row-id="${rowCount}">
+                    <td>
+                        <select class="form-select cuenta-select" name="detalle[${rowCount}][cuenta_id]" required>
+                            ${cuentasSelectOptions}
+                        </select>
+                    </td>
+                    <td><input type="number" step="0.01" min="0" class="form-control text-success amount-input debito-input" name="detalle[${rowCount}][debito]" value="" placeholder="0.00"></td>
+                    <td><input type="number" step="0.01" min="0" class="form-control text-danger amount-input credito-input" name="detalle[${rowCount}][credito]" value="" placeholder="0.00"></td>
+                    <td>
+                        <input type="text" class="form-control" name="detalle[${rowCount}][centro_costo]" placeholder="Opcional">
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-danger btn-remove-row"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `;
+            $('#detalleAsientosTable tbody').append(newRow);
+            // El focus en la nueva línea mejora la usabilidad
+            $(`tr[data-row-id="${rowCount}"]`).find('.cuenta-select').focus(); 
+            updateTotals(); // Actualizar totales (aunque estén en 0)
+        }
+
+        // Botón para añadir fila
+        $('#btnAddRow').on('click', addRow);
+        
+        // Botón para eliminar fila (Evento delegado)
+        $('#detalleAsientosTable').on('click', '.btn-remove-row', function() {
+            $(this).closest('tr').remove();
+            updateTotals(); // Recalcular después de eliminar
+        });
+
+
+        // --------------------------------------------------------------------------------
+        // 3. LÓGICA DE PARTIDA DOBLE (VALIDACIÓN Y CÁLCULO)
+        // --------------------------------------------------------------------------------
+        
+        // Función principal para calcular totales y validar balance
+        function updateTotals() {
+            let totalDebito = 0;
+            let totalCredito = 0;
+
+            // Recorrer todos los inputs de Débito
+            $('.debito-input').each(function() {
+                const val = parseFloat($(this).val()) || 0;
+                totalDebito += val;
+            });
+
+            // Recorrer todos los inputs de Crédito
+            $('.credito-input').each(function() {
+                const val = parseFloat($(this).val()) || 0;
+                totalCredito += val;
+            });
+            
+            // Redondear a dos decimales
+            totalDebito = Math.round(totalDebito * 100) / 100;
+            totalCredito = Math.round(totalCredito * 100) / 100;
+
+            // Mostrar totales
+            $('#totalDebito').val(totalDebito.toFixed(2));
+            $('#totalCredito').val(totalCredito.toFixed(2));
+
+            // Validar Balance (Partida Doble)
+            const diferencia = Math.abs(totalDebito - totalCredito);
+            const isBalanced = diferencia === 0;
+
+            if (isBalanced && totalDebito > 0) { // Balanceado y con al menos un movimiento
+                $('#balanceAlert').addClass('d-none');
+                $('#btnGuardarAsiento').prop('disabled', false).removeClass('btn-danger').addClass('btn-success');
+            } else {
+                $('#balanceDiferencia').text(diferencia.toFixed(2));
+                $('#balanceAlert').removeClass('d-none');
+                $('#btnGuardarAsiento').prop('disabled', true).removeClass('btn-success').addClass('btn-danger');
+            }
+        }
+
+        // Evento delegado para inputs de débito/crédito
+        $('#detalleAsientosTable').on('input', '.amount-input', function() {
+            const input = $(this);
+            const row = input.closest('tr');
+            
+            // Restricción: No Débito Y Crédito al mismo tiempo
+            if (input.hasClass('debito-input') && parseFloat(input.val()) > 0) {
+                row.find('.credito-input').val(0); // Poner Crédito a 0 si se ingresa Débito
+            } else if (input.hasClass('credito-input') && parseFloat(input.val()) > 0) {
+                row.find('.debito-input').val(0); // Poner Débito a 0 si se ingresa Crédito
+            }
+
+            updateTotals();
+        });
+
+
+        // --------------------------------------------------------------------------------
+        // 4. ENVÍO DEL FORMULARIO (AJAX)
+        // --------------------------------------------------------------------------------
+        $('#formAsientoContable').on('submit', function(e) {
+            e.preventDefault();
+            
+            // Ya validamos el balance en el updateTotals, pero es bueno validarlo de nuevo
+            if ($('#btnGuardarAsiento').prop('disabled')) {
+                Swal.fire('Atención', 'Corrija el balance antes de guardar.', 'warning');
+                return;
+            }
+
+            const formData = $(this).serializeArray();
+            
+            // Aquí enviarás los datos al backend (un nuevo endpoint: 'crud_asientos.php')
+            // El backend debe manejar la inserción en asientos_contables y detalle_asientos en una sola transacción PDO.
+            
+            console.log("Datos listos para enviar:", formData);
+            
+            // Ejemplo de llamada AJAX (necesitas crear el archivo crud_asientos.php)
+            /*
+            $.ajax({
+                url: 'contabilidad/asientos/crud_asientos.php?accion=create', 
+                type: 'POST',
+                data: formData,
+                success: function(response) {
+                    if (response.respuesta) {
+                        Swal.fire('Guardado', 'El asiento contable fue guardado con éxito.', 'success');
+                        // Aquí podrías redirigir o limpiar el formulario
+                    } else {
+                        Swal.fire('Error', response.mensaje, 'error');
+                    }
+                }
+            });
+            */
+            
+            Swal.fire('Demo OK', 'La lógica de Partida Doble es correcta. Continuaremos con la API PHP de Asientos.', 'info');
+        });
+        
+    });
+</script>
+{% endblock %}
+
+{% block estilos %}
+{{ parent() }}
+<style>
+        /* Estilo para hacer la tabla más compacta */
+        #tablaCuentas tbody tr td {
+            font-size: 0.9em; 
+            vertical-align: middle;
+        }
+        /* Estilo para el hover de filas en la tabla */
+        #tablaCuentas tbody tr:hover {
+            background-color: #f1f1f1;
+        }
+    </style>
+{% endblock %}
