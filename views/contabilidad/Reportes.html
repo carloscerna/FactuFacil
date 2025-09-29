@@ -1,0 +1,192 @@
+{# views/contabilidad/reportes.html #}
+{% extends 'default_layout.html' %}
+
+{% block head %}
+    {{ parent() }}
+    <style>
+        /* CSS personalizado mínimo, solo para el modal o si Bootstrap no cubre algo */
+        .modal-dialog-centered-custom {
+            display: flex;
+            align-items: center;
+            min-height: calc(100% - 1rem); /* Ajuste para el centrado del modal */
+        }
+        @media (min-width: 576px) {
+            .modal-dialog-centered-custom {
+                min-height: calc(100% - 3.5rem);
+            }
+        }
+        /* Ajuste para que el cursor indique que las tarjetas son clickeables */
+        .card.report-card {
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card.report-card:hover {
+            transform: translateY(-3px); /* Pequeño efecto hover */
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important; /* Sombra más pronunciada */
+        }
+        /* Estilo para el texto dentro de la tarjeta, para que ocupe todo el espacio */
+        .card.report-card .card-body a {
+            display: block;
+            text-decoration: none;
+            color: inherit; /* Hereda el color del texto de la tarjeta */
+            height: 100%; /* Asegura que el enlace ocupe toda la tarjeta */
+            display: flex; /* Para centrar el texto verticalmente si es necesario */
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+    </style>
+{% endblock %}
+
+{% block contenidos %}
+    <div class="container mt-4 mb-4">
+        <h2 class="text-center mb-4 text-primary">Reportes de Contabilidad</h2>
+        
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 justify-content-center">
+            <div class="col">
+                <div class="card h-100 report-card" data-reporte-id="balance_comprobacion">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <a href="#" class="text-decoration-none text-dark fs-5">Balance de Comprobación</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100 report-card" data-reporte-id="libro_mayor">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <a href="#" class="text-decoration-none text-dark fs-5">Libro Mayor</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100 report-card" data-reporte-id="libro_diario">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <a href="#" class="text-decoration-none text-dark fs-5">Libro Diario</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100 report-card" data-reporte-id="estado_resultados">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <a href="#" class="text-decoration-none text-dark fs-5">Estado de Resultados (Utilidades y Pérdidas)</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card h-100 report-card" data-reporte-id="libro_iva">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <a href="#" class="text-decoration-none text-dark fs-5">Libro de IVA</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal fade" id="dateSelectionModal" tabindex="-1" aria-labelledby="modalReportTitle" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-dialog-centered-custom">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalReportTitle">Seleccionar Fechas para el Reporte</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="reportForm">
+                            <input type="hidden" id="reportType" name="report_type">
+                            
+                            <div class="mb-3">
+                                <label for="modal_fecha_inicio" class="form-label">Fecha de Inicio:</label>
+                                <input type="date" class="form-control" id="modal_fecha_inicio" name="fecha_inicio" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="modal_fecha_fin" class="form-label">Fecha de Fin:</label>
+                                <input type="date" class="form-control" id="modal_fecha_fin" name="fecha_fin" required>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary w-100 mt-3">Generar Reporte PDF</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Reportes de Contabilidad cargados (Bootstrap)');
+
+            // Inicializar el modal de Bootstrap
+            const dateSelectionModal = new bootstrap.Modal(document.getElementById('dateSelectionModal'), {
+                backdrop: 'static', // Evita que se cierre al hacer clic fuera
+                keyboard: false // Evita que se cierre con la tecla Esc
+            });
+
+            const reportForm = document.getElementById('reportForm');
+            const reportTypeInput = document.getElementById('reportType');
+            const modalReportTitleElement = document.getElementById('modalReportTitle'); // Referencia al título del modal
+            const modalFechaInicio = document.getElementById('modal_fecha_inicio');
+            const modalFechaFin = document.getElementById('modal_fecha_fin');
+
+            // Set default dates to current month/year
+            const today = new Date();
+            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+            
+            modalFechaInicio.value = firstDayOfMonth;
+            modalFechaFin.value = lastDayOfMonth;
+
+            // Manejar clics en las tarjetas de reportes
+            document.querySelectorAll('.card.report-card').forEach(card => {
+                card.addEventListener('click', function(e) {
+                    e.preventDefault(); 
+                    const reportId = this.dataset.reporteId;
+                    const reportName = this.querySelector('a').textContent;
+
+                    reportTypeInput.value = reportId; // Guarda el ID del reporte
+                    modalReportTitleElement.textContent = `Generar ${reportName}`; // Actualiza el título del modal
+                    dateSelectionModal.show(); // Muestra el modal de Bootstrap
+                });
+            });
+
+            // Manejar el envío del formulario del modal
+            reportForm.addEventListener('submit', function(e) {
+                e.preventDefault(); 
+
+                const type = reportTypeInput.value;
+                const fechaInicio = modalFechaInicio.value;
+                const fechaFin = modalFechaFin.value;
+
+                let reportUrl = '../factufacil/php_libs/reportes/contabilidad/';
+                // Definir la URL del script PHP según el tipo de reporte
+                // Ajusta estas rutas a donde tengas tus scripts PHP FPDF
+                switch (type) {
+                    case 'balance_comprobacion':
+                        reportUrl = 'generar_balance_comprobacion.php'; 
+                        break;
+                    case 'libro_mayor':
+                        reportUrl = 'generar_libro_mayor.php';
+                        break;
+                    case 'libro_diario':
+                        reportUrl = 'generar_libro_diario.php'; 
+                        break;
+                    case 'estado_resultados':
+                        reportUrl = 'generar_estado_resultados.php';
+                        break;
+                    case 'libro_iva':
+                        reportUrl = 'generar_libro_iva.php';
+                        break;
+                    default:
+                        alert('Tipo de reporte no reconocido.');
+                        return;
+                }
+
+                // Construir la URL con los parámetros GET y abrir en una nueva pestaña
+                const fullUrl = `php_libs/reportes/contabilidad/${reportUrl}?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`;
+                window.open(fullUrl, '_blank');
+
+                dateSelectionModal.hide(); // Oculta el modal de Bootstrap
+            });
+        });
+    </script>
+{% endblock %}
