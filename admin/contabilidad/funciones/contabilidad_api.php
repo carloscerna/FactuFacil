@@ -1,8 +1,8 @@
 <?php
 // funciones/contabilidad_api.php
 
-session_name('FactuFacil');
-session_start();
+//session_name('FactuFacil');
+//session_start();
 
 // 1. VALIDACIÓN Y CONFIGURACIÓN INICIAL
 if (empty($_SESSION['userNombre']) || empty($_SESSION['codigo_institucion'])) {

@@ -1,0 +1,299 @@
+{# views/contabilidad/configuracion_contable/configuracion_contable.html #}
+
+{# Extendemos la plantilla principal para mantener el diseño (menú, header, footer) #}
+{% extends 'default_layout.html' %}
+
+{# Título de la página #}
+{% block title %}Configuración de Mapeo Contable - FactuFacil{% endblock %}
+
+{# CSS específico para esta página #}
+{% block head %}
+    {{ parent() }} <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <style>
+        /* Estilo para resaltar la clave de mapeo */
+        .clave-mapeo { font-family: monospace; font-weight: bold; color: #0d6efd; }
+    </style>
+{% endblock %}
+
+{# Contenido principal de la página #}
+{% block content %}
+<div class="container-fluid p-4">
+    <div class="row mb-4">
+        <div class="col-12">
+             <h2 class="mb-4 text-primary fw-bold">Configuración de Mapeo Contable</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 text-secondary"><i class="fas fa-exchange-alt me-2"></i>Listado de Mapeos</h5>
+                    <button type="button" class="btn btn-primary" id="btnNuevoMapeo">
+                        <i class="fas fa-plus me-2"></i>Nuevo Mapeo
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Aquí defines qué cuenta contable del catálogo se debe usar automáticamente cuando el sistema realiza ciertas operaciones internas (como "INVENTARIO_MERCADERIA").
+                    </div>
+                    
+                    <div class="table-responsive">
+                        <table id="tablaMapeo" class="table table-hover align-middle w-100">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%">ID</th>
+                                    <th style="width: 35%">Clave del Sistema</th>
+                                    <th style="width: 45%">Cuenta Contable Asociada</th>
+                                    <th style="width: 15%" class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalMapeo" tabindex="-1" aria-labelledby="modalMapeoLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalMapeoLabel">Nuevo Mapeo</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formMapeo">
+                    <input type="hidden" id="config_id" name="config_id">
+
+                    <div class="mb-3">
+                        <label for="clave_mapeo" class="form-label fw-bold">Clave del Sistema <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control text-uppercase" id="clave_mapeo" name="clave_mapeo" required placeholder="Ej: INVENTARIO_MERCADERIA">
+                        <div class="form-text">Ingresa la clave interna exacta solicitada por el error (en mayúsculas).</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="cuenta_id" class="form-label fw-bold">Cuenta Contable <span class="text-danger">*</span></label>
+                        <select class="form-select" id="cuenta_id" name="cuenta_id" required>
+                            <option value="">Cargando cuentas...</option>
+                            </select>
+                        <div class="form-text">Selecciona la cuenta del catálogo que corresponde a esta clave.</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnGuardarMapeo">
+                    <i class="fas fa-save me-2"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{# JavaScript específico para esta página #}
+{% block scripts %}
+    {{ parent() }} <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        $(document).ready(function() {
+            // Variables globales
+            let tablaMapeo;
+            const modalBootstrap = new bootstrap.Modal(document.getElementById('modalMapeo'));
+
+            // --- 1. Inicializar DataTables ---
+            tablaMapeo = $('#tablaMapeo').DataTable({
+                "ajax": {
+                    "url": "crud_config.php", // Llama al controlador PHP en la misma carpeta
+                    "type": "POST",
+                    "data": { "accion": "listar" }, // Especifica la acción
+                    "dataSrc": "" // Los datos vienen como un array JSON directo
+                },
+                "columns": [
+                    { "data": "id" },
+                    { 
+                        "data": "clave_mapeo",
+                        "render": function(data) {
+                            return `<span class="clave-mapeo">${data}</span>`;
+                        }
+                    },
+                    { 
+                        "data": null,
+                        "render": function(data, type, row) {
+                            // Muestra Código - Nombre o una alerta si no encuentra la cuenta
+                            return (row.cuenta_codigo && row.cuenta_nombre) 
+                                ? `<strong>${row.cuenta_codigo}</strong> - ${row.cuenta_nombre}` 
+                                : '<span class="badge bg-danger">Cuenta no encontrada en catálogo</span>';
+                        }
+                    },
+                    {
+                        "data": null,
+                        "orderable": false,
+                        "className": "text-center",
+                        "render": function(data, type, row) {
+                            // Botones de Editar y Eliminar
+                            return `
+                                <button class="btn btn-sm btn-outline-primary btnEditar me-1" data-id="${row.id}" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger btnEliminar" data-id="${row.id}" title="Eliminar">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            `;
+                        }
+                    }
+                ],
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" // Idioma español
+                },
+                "order": [[1, 'asc']] // Ordenar por clave alfabéticamente
+            });
+
+
+            // --- 2. Función para Cargar el Select de Cuentas Contables ---
+            function cargarCuentas() {
+                $.ajax({
+                    url: 'get_cuentas.php', // Script auxiliar en la misma carpeta
+                    type: 'GET',
+                    dataType: 'json',
+                    success: function(response) {
+                        let options = '<option value="">Seleccione una cuenta...</option>';
+                        if(response && response.length > 0){
+                            response.forEach(cuenta => {
+                                // Muestra Código - Nombre en el select
+                                options += `<option value="${cuenta.id}">${cuenta.codigo} - ${cuenta.nombre}</option>`;
+                            });
+                        } else {
+                            options = '<option value="">No hay cuentas disponibles</option>';
+                        }
+                        $('#cuenta_id').html(options);
+                    },
+                    error: function() {
+                         $('#cuenta_id').html('<option value="">Error al cargar cuentas</option>');
+                         Swal.fire('Error', 'No se pudo cargar el catálogo de cuentas.', 'error');
+                    }
+                });
+            }
+
+            // Cargar las cuentas al iniciar la página
+            cargarCuentas();
+
+
+            // --- 3. Evento: Botón "Nuevo Mapeo" ---
+            $('#btnNuevoMapeo').click(function() {
+                $('#formMapeo')[0].reset(); // Limpiar formulario
+                $('#config_id').val('0');   // ID 0 indica nuevo registro
+                $('#modalMapeoLabel').text('Nuevo Mapeo');
+                $('#clave_mapeo').prop('readonly', false); // Permitir escribir la clave
+                // Verificar si el select de cuentas tiene datos, si no, intentar recargarlo
+                if($('#cuenta_id option').length <= 1) { cargarCuentas(); }
+                modalBootstrap.show();
+            });
+
+
+            // --- 4. Evento: Botón "Guardar" (en el modal) ---
+            $('#btnGuardarMapeo').click(function() {
+                // Validación simple del lado del cliente
+                const clave = $('#clave_mapeo').val().trim();
+                const cuenta = $('#cuenta_id').val();
+
+                if(clave === '' || cuenta === '') {
+                    Swal.fire('Campos Incompletos', 'Por favor, ingrese la clave y seleccione una cuenta.', 'warning');
+                    return;
+                }
+
+                // Preparar datos para enviar
+                let formData = new FormData($('#formMapeo')[0]);
+                formData.append('accion', 'guardar');
+
+                // Deshabilitar botón para evitar doble envío
+                const btn = $(this);
+                btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Guardando...');
+
+                $.ajax({
+                    url: 'crud_config.php',
+                    type: 'POST',
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    dataType: 'json',
+                    success: function(response) {
+                        btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i>Guardar');
+                        if (response.success) {
+                            Swal.fire('¡Guardado!', response.message, 'success');
+                            modalBootstrap.hide();
+                            tablaMapeo.ajax.reload(); // Recargar la tabla
+                        } else {
+                            Swal.fire('Error', response.message, 'error');
+                        }
+                    },
+                    error: function() {
+                        btn.prop('disabled', false).html('<i class="fas fa-save me-2"></i>Guardar');
+                        Swal.fire('Error de Conexión', 'No se pudo completar la solicitud.', 'error');
+                    }
+                });
+            });
+
+
+            // --- 5. Evento: Botón "Editar" (en la tabla) ---
+            $('#tablaMapeo tbody').on('click', '.btnEditar', function() {
+                // Obtener datos de la fila clickeada
+                let dataRow = tablaMapeo.row($(this).parents('tr')).data();
+                
+                // Llenar el formulario con los datos
+                $('#config_id').val(dataRow.id);
+                // La clave NO se debe poder editar una vez creada, solo la cuenta asociada
+                $('#clave_mapeo').val(dataRow.clave_mapeo).prop('readonly', true); 
+                $('#cuenta_id').val(dataRow.cuenta_id);
+
+                $('#modalMapeoLabel').text('Editar Mapeo');
+                modalBootstrap.show();
+            });
+
+
+            // --- 6. Evento: Botón "Eliminar" (en la tabla) ---
+            $('#tablaMapeo tbody').on('click', '.btnEliminar', function() {
+                 let dataRow = tablaMapeo.row($(this).parents('tr')).data();
+                 let idEliminar = dataRow.id;
+                 const clave = dataRow.clave_mapeo;
+
+                 Swal.fire({
+                    title: '¿Eliminar Mapeo?',
+                    html: `Se eliminará la asociación para la clave: <b>${clave}</b>.<br>Esto puede causar errores en procesos automáticos.`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Sí, eliminar',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                         $.ajax({
+                            url: 'crud_config.php',
+                            type: 'POST',
+                            data: { 'accion': 'eliminar', 'id': idEliminar },
+                            dataType: 'json',
+                            success: function(response) {
+                                if (response.success) {
+                                    Swal.fire('Eliminado', response.message, 'success');
+                                    tablaMapeo.ajax.reload();
+                                } else {
+                                    Swal.fire('Error', response.message, 'error');
+                                }
+                            },
+                            error: function() { Swal.fire('Error', 'No se pudo conectar con el servidor.', 'error'); }
+                        });
+                    }
+                });
+            });
+
+        }); // Fin document.ready
+    </script>
+{% endblock %}
