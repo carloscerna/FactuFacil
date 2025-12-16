@@ -1,5 +1,6 @@
 <?php
-session_start();
+session_name('FactuFacil');
+//session_start();
 // Establecer cabecera para respuesta JSON
 header('Content-Type: application/json');
 
@@ -13,7 +14,6 @@ $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 require_once($path_root . "/FactuFacil/includes/mainFunctions_.php");
 
 // Usar la conexión global $dblink (asegúrate de que así se llame en tu mainFunctions_.php)
-global $dblink; 
 $db = $dblink;
 $codigo_institucion_activa = $_SESSION['codigo_institucion'];
 

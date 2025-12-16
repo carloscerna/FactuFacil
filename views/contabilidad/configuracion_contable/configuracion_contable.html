@@ -1,14 +1,13 @@
 {# views/contabilidad/configuracion_contable/configuracion_contable.html #}
 
-{# Extendemos la plantilla principal para mantener el diseño (menú, header, footer) #}
+{# Extendemos la plantilla principal #}
 {% extends 'default_layout.html' %}
 
-{# Título de la página #}
-{% block title %}Configuración de Mapeo Contable - FactuFacil{% endblock %}
-
 {# CSS específico para esta página #}
-{% block head %}
-    {{ parent() }} <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+{# Usamos 'extraCSS' como está definido en tu default_layout.html #}
+{% block extraCSS %}
+    {{ parent() }}
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     <style>
         /* Estilo para resaltar la clave de mapeo */
         .clave-mapeo { font-family: monospace; font-weight: bold; color: #0d6efd; }
@@ -16,9 +15,8 @@
 {% endblock %}
 
 {# Contenido principal de la página #}
-{% block content %}
-<div class="container-fluid p-4">
-    <div class="row mb-4">
+{% block contenidos %}
+<div class="container"> <div class="row mb-4">
         <div class="col-12">
              <h2 class="mb-4 text-primary fw-bold">Configuración de Mapeo Contable</h2>
         </div>
@@ -59,7 +57,7 @@
     </div>
 </div>
 
-<div class="modal fade" id="modalMapeo" tabindex="-1" aria-labelledby="modalMapeoLabel" aria-hidden="true" data-bs-backdrop="static">
+<div class="modal fade" id="modalMapeo" tabindex="-1" aria-labelledby="modalMapeoLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -97,24 +95,43 @@
 {% endblock %}
 
 {# JavaScript específico para esta página #}
-{% block scripts %}
-    {{ parent() }} <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+{# Usamos 'javascripts' como está definido en tu default_layout.html #}
+{% block javascripts %}
+    {{ parent() }} <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"></script>
+
     <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <script>
+        // Esperar a que el documento esté listo (jQuery ya cargado por el padre)
         $(document).ready(function() {
+            console.log("Script de Configuración Contable iniciado.");
+
             // Variables globales
             let tablaMapeo;
-            const modalBootstrap = new bootstrap.Modal(document.getElementById('modalMapeo'));
+            // Referencia al elemento del modal
+            const modalElement = document.getElementById('modalMapeo');
+            let modalBootstrap;
+
+            // Verificar si Bootstrap 5 se cargó correctamente
+            if (typeof bootstrap !== 'undefined' && modalElement) {
+                console.log("Bootstrap 5 detectado y elemento modal encontrado.");
+                 // Inicializa la instancia de Bootstrap del modal
+                modalBootstrap = new bootstrap.Modal(modalElement);
+            } else {
+                 console.error("ERROR CRÍTICO: Bootstrap 5 no está cargado o no se encontró el modal.");
+                 alert("Error: No se pudo cargar la funcionalidad de ventanas modales. Verifique la consola.");
+                 return; // Detener ejecución si no hay modal
+            }
 
             // --- 1. Inicializar DataTables ---
             tablaMapeo = $('#tablaMapeo').DataTable({
                 "ajax": {
-                    "url": "crud_config.php", // Llama al controlador PHP en la misma carpeta
+                    "url": "admin/configuracion_contable/crud_config.php",
                     "type": "POST",
-                    "data": { "accion": "listar" }, // Especifica la acción
-                    "dataSrc": "" // Los datos vienen como un array JSON directo
+                    "data": { "accion": "listar" },
+                    "dataSrc": ""
                 },
                 "columns": [
                     { "data": "id" },
@@ -127,7 +144,6 @@
                     { 
                         "data": null,
                         "render": function(data, type, row) {
-                            // Muestra Código - Nombre o una alerta si no encuentra la cuenta
                             return (row.cuenta_codigo && row.cuenta_nombre) 
                                 ? `<strong>${row.cuenta_codigo}</strong> - ${row.cuenta_nombre}` 
                                 : '<span class="badge bg-danger">Cuenta no encontrada en catálogo</span>';
@@ -138,7 +154,6 @@
                         "orderable": false,
                         "className": "text-center",
                         "render": function(data, type, row) {
-                            // Botones de Editar y Eliminar
                             return `
                                 <button class="btn btn-sm btn-outline-primary btnEditar me-1" data-id="${row.id}" title="Editar">
                                     <i class="fas fa-edit"></i>
@@ -151,23 +166,22 @@
                     }
                 ],
                 "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" // Idioma español
+                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json"
                 },
-                "order": [[1, 'asc']] // Ordenar por clave alfabéticamente
+                "order": [[1, 'asc']]
             });
 
 
             // --- 2. Función para Cargar el Select de Cuentas Contables ---
             function cargarCuentas() {
                 $.ajax({
-                    url: 'get_cuentas.php', // Script auxiliar en la misma carpeta
+                    url: 'admin/configuracion_contable/get_cuentas.php',
                     type: 'GET',
                     dataType: 'json',
                     success: function(response) {
                         let options = '<option value="">Seleccione una cuenta...</option>';
                         if(response && response.length > 0){
                             response.forEach(cuenta => {
-                                // Muestra Código - Nombre en el select
                                 options += `<option value="${cuenta.id}">${cuenta.codigo} - ${cuenta.nombre}</option>`;
                             });
                         } else {
@@ -177,7 +191,12 @@
                     },
                     error: function() {
                          $('#cuenta_id').html('<option value="">Error al cargar cuentas</option>');
-                         Swal.fire('Error', 'No se pudo cargar el catálogo de cuentas.', 'error');
+                         // Usamos Swal si está cargado, si no, un alert básico
+                         if(typeof Swal !== 'undefined') {
+                            Swal.fire('Error', 'No se pudo cargar el catálogo de cuentas.', 'error');
+                         } else {
+                             alert('Error al cargar el catálogo de cuentas.');
+                         }
                     }
                 });
             }
@@ -188,19 +207,20 @@
 
             // --- 3. Evento: Botón "Nuevo Mapeo" ---
             $('#btnNuevoMapeo').click(function() {
-                $('#formMapeo')[0].reset(); // Limpiar formulario
-                $('#config_id').val('0');   // ID 0 indica nuevo registro
+                console.log("Botón Nuevo clickeado");
+                $('#formMapeo')[0].reset();
+                $('#config_id').val('0');
                 $('#modalMapeoLabel').text('Nuevo Mapeo');
-                $('#clave_mapeo').prop('readonly', false); // Permitir escribir la clave
-                // Verificar si el select de cuentas tiene datos, si no, intentar recargarlo
+                $('#clave_mapeo').prop('readonly', false);
+                
                 if($('#cuenta_id option').length <= 1) { cargarCuentas(); }
+                
                 modalBootstrap.show();
             });
 
 
             // --- 4. Evento: Botón "Guardar" (en el modal) ---
             $('#btnGuardarMapeo').click(function() {
-                // Validación simple del lado del cliente
                 const clave = $('#clave_mapeo').val().trim();
                 const cuenta = $('#cuenta_id').val();
 
@@ -209,16 +229,14 @@
                     return;
                 }
 
-                // Preparar datos para enviar
                 let formData = new FormData($('#formMapeo')[0]);
                 formData.append('accion', 'guardar');
 
-                // Deshabilitar botón para evitar doble envío
                 const btn = $(this);
                 btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Guardando...');
 
                 $.ajax({
-                    url: 'crud_config.php',
+                    url: 'admin/configuracion_contable/crud_config.php',
                     type: 'POST',
                     data: formData,
                     contentType: false,
@@ -229,7 +247,7 @@
                         if (response.success) {
                             Swal.fire('¡Guardado!', response.message, 'success');
                             modalBootstrap.hide();
-                            tablaMapeo.ajax.reload(); // Recargar la tabla
+                            tablaMapeo.ajax.reload();
                         } else {
                             Swal.fire('Error', response.message, 'error');
                         }
@@ -244,12 +262,9 @@
 
             // --- 5. Evento: Botón "Editar" (en la tabla) ---
             $('#tablaMapeo tbody').on('click', '.btnEditar', function() {
-                // Obtener datos de la fila clickeada
                 let dataRow = tablaMapeo.row($(this).parents('tr')).data();
                 
-                // Llenar el formulario con los datos
                 $('#config_id').val(dataRow.id);
-                // La clave NO se debe poder editar una vez creada, solo la cuenta asociada
                 $('#clave_mapeo').val(dataRow.clave_mapeo).prop('readonly', true); 
                 $('#cuenta_id').val(dataRow.cuenta_id);
 
@@ -276,7 +291,7 @@
                 }).then((result) => {
                     if (result.isConfirmed) {
                          $.ajax({
-                            url: 'crud_config.php',
+                            url: 'admin/configuracion_contable/crud_config.php',
                             type: 'POST',
                             data: { 'accion': 'eliminar', 'id': idEliminar },
                             dataType: 'json',

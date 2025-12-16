@@ -1,4 +1,5 @@
 <?php
+session_name('FactuFacil');
 session_start();
 header('Content-Type: application/json');
 
@@ -9,9 +10,9 @@ if (empty($_SESSION['codigo_institucion'])) {
 }
 
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
-require_once($path_root . "/FactuFacil/includes/mainFunctions_.php");
+// Asegúrate de que esta ruta sea correcta para tu proyecto
+include($path_root."/FactuFacil/includes/mainFunctions_.php"); 
 
-global $dblink;
 $db = $dblink;
 $codigo_institucion_activa = $_SESSION['codigo_institucion'];
 
