@@ -1,6 +1,6 @@
 <?php
-session_name('FactuFacil');
-session_start();
+//session_name('FactuFacil');
+//session_start();
 header('Content-Type: application/json');
 
 // Validar sesión

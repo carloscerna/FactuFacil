@@ -95,45 +95,95 @@ switch ($accion) {
         }
         break;
 
-    case 'crearActualizar':
-        $id_clientes = $_POST['id_clientes'] ?? '';
-        $codigo = $_POST['codigo'] ?? '';
+   case 'crearActualizar':
+        $id_clientes = isset($_POST['id_clientes']) ? intval($_POST['id_clientes']) : 0;
+        
+        // --- VARIABLES ORIGINALES ---
         $nombres = $_POST['nombres'] ?? '';
         $apellidos = $_POST['apellidos'] ?? '';
-        $cliente_empresa = $_POST['cliente_empresa'] ?? '';
-        $codigo_pais = $_POST['codigo_pais'] ?? '';
-        $codigo_giro = $_POST['codigo_giro'] ?? '';
+        $nombre_empresa = $_POST['cliente_empresa'] ?? ''; // Nombre Comercial
+        $giro = $_POST['giro'] ?? '';
         $direccion = $_POST['direccion'] ?? '';
         $codigo_departamento = $_POST['codigo_departamento'] ?? '';
         $codigo_municipio = $_POST['codigo_municipio'] ?? '';
         $codigo_distrito = $_POST['codigo_distrito'] ?? '';
         $dui = $_POST['dui'] ?? '';
         $nit = $_POST['nit'] ?? '';
-        $numero_registro = $_POST['numero_registro'] ?? '';
+        $numero_registro = $_POST['numero_registro'] ?? ''; // NRC
         $telefono_residencia = $_POST['telefono_residencia'] ?? '';
         $telefono_celular = $_POST['telefono_celular'] ?? '';
-        $codigo_estatus = $_POST['codigo_estatus'] ?? '';
-        $correo_electronico = $_POST['correo_electronico'] ?? ''; // New variable
-    
+        $correo_electronico = $_POST['correo_electronico'] ?? '';
+        $codigo_pais = $_POST['codigo_pais'] ?? '9300'; // El Salvador por defecto
+        $codigo_giro = $_POST['codigo_giro'] ?? '';
+        $codigo_estatus = $_POST['codigo_estatus'] ?? '01';
+
+        // --- NUEVAS VARIABLES PARA CONTABILIDAD ---
+        $razon_social = $_POST['razon_social'] ?? ''; // Para Personas Jurídicas
+        $categoria_contribuyente = $_POST['categoria_contribuyente'] ?? 'OTRO'; // GRAN_CONTRIBUYENTE, ETC
+        // Checkbox: si viene 'on' o 'true' es true, sino false
+        $es_contribuyente = (isset($_POST['es_contribuyente']) && ($_POST['es_contribuyente'] == 'on' || $_POST['es_contribuyente'] == 'true')) ? 'true' : 'false';
 
         try {
-            if (empty($id_clientes)) {
-                // Generar el código automáticamente para un nuevo registro
-                $codigo_generado = generarCodigoCliente($pdo);
-                if (!$codigo_generado) {
-                    throw new Exception("No se pudo generar el código del cliente.");
+            if ($id_clientes == 0) {
+                // --- INSERTAR NUEVO ---
+                
+                // 1. Validar duplicados (NIT o DUI)
+                if (!empty($nit)) {
+                    $sql_check = "SELECT COUNT(*) FROM clientes WHERE nit = ? AND codigo_institucion = ?";
+                    $stmt_check = $pdo->prepare($sql_check);
+                    $stmt_check->execute([$nit, $codigo_institucion_sesion]);
+                    if ($stmt_check->fetchColumn() > 0) throw new Exception("Ya existe un cliente con ese NIT.");
                 }
-                $sql = "INSERT INTO clientes (codigo, codigo_institucion, nombres, apellidos, nombre_empresa, direccion, codigo_departamento, codigo_municipio, codigo_distrito, dui, nit, numero_registro, telefono_residencia, telefono_celular, fecha_creacion, codigo_estatus, correo_electronico, codigo_pais, codigo_giro) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)";
+
+                $codigo_generado = generarCodigoCliente($pdo); // Tu función existente
+
+                $sql = "INSERT INTO clientes (
+                            codigo, codigo_institucion, nombres, apellidos, nombre_empresa, 
+                            giro, direccion, codigo_departamento, codigo_municipio, codigo_distrito, 
+                            dui, nit, numero_registro, telefono_residencia, telefono_celular, 
+                            fecha_creacion, codigo_estatus, correo_electronico, codigo_pais, codigo_giro,
+                            razon_social, categoria_contribuyente, es_contribuyente
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, 
+                            ?, ?, ?, ?, ?, 
+                            ?, ?, ?, ?, ?, 
+                            NOW(), ?, ?, ?, ?,
+                            ?, ?, ?
+                        )";
+                
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $nombres, $apellidos, $cliente_empresa, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $correo_electronico,$codigo_pais, $codigo_giro]);
+                $stmt->execute([
+                    $codigo_generado, $codigo_institucion_sesion, $nombres, $apellidos, $nombre_empresa,
+                    $giro, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito,
+                    $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular,
+                    $codigo_estatus, $correo_electronico, $codigo_pais, $codigo_giro,
+                    $razon_social, $categoria_contribuyente, $es_contribuyente
+                ]);
+
             } else {
-                $sql = "UPDATE clientes SET codigo = ?, nombres = ?, apellidos = ?, nombre_empresa = ?, direccion = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, dui = ?, nit = ?, numero_registro = ?, telefono_residencia = ?, telefono_celular = ?, codigo_estatus = ?, correo_electronico = ?, codigo_pais = ?, codigo_giro = ? WHERE id_clientes = ? AND codigo_institucion = ?";
+                // --- ACTUALIZAR EXISTENTE ---
+                $sql = "UPDATE clientes SET 
+                            nombres = ?, apellidos = ?, nombre_empresa = ?, 
+                            giro = ?, direccion = ?, codigo_departamento = ?, codigo_municipio = ?, codigo_distrito = ?, 
+                            dui = ?, nit = ?, numero_registro = ?, telefono_residencia = ?, telefono_celular = ?, 
+                            codigo_estatus = ?, correo_electronico = ?, codigo_pais = ?, codigo_giro = ?,
+                            razon_social = ?, categoria_contribuyente = ?, es_contribuyente = ?
+                        WHERE id_clientes = ? AND codigo_institucion = ?";
+                
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo, $nombres, $apellidos, $cliente_empresa, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito, $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular, $codigo_estatus, $correo_electronico, $codigo_pais, $codigo_giro, $id_clientes, $codigo_institucion_sesion]);
+                $stmt->execute([
+                    $nombres, $apellidos, $nombre_empresa,
+                    $giro, $direccion, $codigo_departamento, $codigo_municipio, $codigo_distrito,
+                    $dui, $nit, $numero_registro, $telefono_residencia, $telefono_celular,
+                    $codigo_estatus, $correo_electronico, $codigo_pais, $codigo_giro,
+                    $razon_social, $categoria_contribuyente, $es_contribuyente,
+                    $id_clientes, $codigo_institucion_sesion
+                ]);
             }
-            echo json_encode(['respuesta' => true, 'mensaje' => 'Cliente guardado exitosamente.']);
-        } catch (PDOException $e) {
+
+            echo json_encode(['respuesta' => true, 'mensaje' => 'Cliente guardado correctamente.']);
+
+        } catch (Exception $e) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al guardar: ' . $e->getMessage()]);
         }
         break;
@@ -213,7 +263,48 @@ switch ($accion) {
                 echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener giros.']);
             }
             break;
-        
+// --- NUEVO BLOQUE PARA VENTAS ---
+    case 'buscar_cliente_venta':
+        $termino = $_POST['termino'] ?? '';
+        try {
+            // Buscamos coincidencia en Nombre, Apellido, Razón Social, NIT o NRC
+            $sql = "SELECT 
+                        id_clientes,
+                        -- Lógica inteligente: Si tiene Razón Social (Empresa), mostrarla. Si no, Nombres + Apellidos
+                        COALESCE(NULLIF(razon_social, ''), CONCAT(nombres, ' ', apellidos)) AS nombre_completo,
+                        nombre_empresa AS nombre_comercial,
+                        nit,
+                        numero_registro AS nrc,
+                        direccion,
+                        categoria_contribuyente,
+                        es_contribuyente
+                    FROM clientes 
+                    WHERE codigo_institucion = ? 
+                    AND (
+                        nombres ILIKE ? OR 
+                        apellidos ILIKE ? OR 
+                        razon_social ILIKE ? OR 
+                        nombre_empresa ILIKE ? OR
+                        nit LIKE ? OR
+                        numero_registro LIKE ?
+                    )
+                    AND codigo_estatus = '01' -- Solo activos
+                    LIMIT 20";
+            
+            $stmt = $pdo->prepare($sql);
+            $like = "%$termino%";
+            $stmt->execute([
+                $codigo_institucion_sesion, 
+                $like, $like, $like, $like, $like, $like
+            ]);
+            
+            $resultados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            echo json_encode(['respuesta' => true, 'clientes' => $resultados]);
+            
+        } catch (Exception $e) {
+            echo json_encode(['respuesta' => false, 'mensaje' => $e->getMessage()]);
+        }
+        break;
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
 

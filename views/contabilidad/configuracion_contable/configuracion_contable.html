@@ -172,34 +172,41 @@
             });
 
 
-            // --- 2. Función para Cargar el Select de Cuentas Contables ---
-            function cargarCuentas() {
-                $.ajax({
-                    url: 'admin/configuracion_contable/get_cuentas.php',
-                    type: 'GET',
-                    dataType: 'json',
-                    success: function(response) {
-                        let options = '<option value="">Seleccione una cuenta...</option>';
-                        if(response && response.length > 0){
-                            response.forEach(cuenta => {
-                                options += `<option value="${cuenta.id}">${cuenta.codigo} - ${cuenta.nombre}</option>`;
-                            });
-                        } else {
-                            options = '<option value="">No hay cuentas disponibles</option>';
-                        }
-                        $('#cuenta_id').html(options);
-                    },
-                    error: function() {
-                         $('#cuenta_id').html('<option value="">Error al cargar cuentas</option>');
-                         // Usamos Swal si está cargado, si no, un alert básico
-                         if(typeof Swal !== 'undefined') {
-                            Swal.fire('Error', 'No se pudo cargar el catálogo de cuentas.', 'error');
-                         } else {
-                             alert('Error al cargar el catálogo de cuentas.');
-                         }
+        function cargarCuentas() {
+            // CAMBIO 1: Apuntar a tu CRUD de cuentas existente
+            // Asegúrate de que la ruta sea correcta desde la raíz de tu servidor
+            const URL_CUENTAS = '/FactuFacil/admin/contabilidad/cuentas/crud_cuentas.php'; 
+
+            $.ajax({
+                url: URL_CUENTAS,
+                type: 'POST', // O 'GET', tu switch acepta ambos, pero tu código usa $_POST['accion'] prioritariamente
+                data: { accion: 'list_all_cuentas' }, // CAMBIO 2: Usar la acción que ya tienes programada
+                dataType: 'json',
+                success: function(response) {
+                    let options = '<option value="">Seleccione una cuenta...</option>';
+                    
+                    // CAMBIO 3: Tu CRUD devuelve { respuesta: true, data: [...] }
+                    // Así que accedemos a response.data
+                    if(response.respuesta && response.data && response.data.length > 0){
+                        response.data.forEach(cuenta => {
+                            // Muestra Código - Nombre
+                            options += `<option value="${cuenta.id}">${cuenta.codigo} - ${cuenta.nombre}</option>`;
+                        });
+                    } else {
+                        options = '<option value="">No hay cuentas disponibles</option>';
                     }
-                });
-            }
+                    $('#cuenta_id').html(options);
+                },
+                error: function() {
+                        $('#cuenta_id').html('<option value="">Error al cargar cuentas</option>');
+                        if(typeof Swal !== 'undefined') {
+                        Swal.fire('Error', 'No se pudo cargar el catálogo de cuentas.', 'error');
+                        } else {
+                            alert('Error al cargar el catálogo de cuentas.');
+                        }
+                }
+            });
+        }
 
             // Cargar las cuentas al iniciar la página
             cargarCuentas();

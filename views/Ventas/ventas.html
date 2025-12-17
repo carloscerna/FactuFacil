@@ -1,0 +1,130 @@
+{# views/ventas/Ventas.html #}
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0"><i class="fas fa-cash-register me-2"></i>Nueva Venta / Facturación</h4>
+                </div>
+                <div class="card-body">
+                    <form id="formVenta">
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Fecha Emisión</label>
+                                <input type="date" class="form-control" id="fecha_emision" value="{{ 'now'|date('Y-m-d') }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Tipo Documento</label>
+                                <select class="form-select" id="tipo_documento">
+                                    <option value="01">Factura Consumidor Final</option>
+                                    <option value="03">Comprobante Crédito Fiscal</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">No. Documento</label>
+                                <input type="text" class="form-control" id="numero_documento" placeholder="Automático o Manual">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold">Condición Pago</label>
+                                <select class="form-select" id="condicion_pago">
+                                    <option value="CONTADO">Contado</option>
+                                    <option value="CREDITO">Crédito</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold">Cliente</label>
+                                <select class="form-select" id="id_cliente" style="width: 100%;"></select>
+                            </div>
+                            <div class="col-md-6 pt-4">
+                                <div id="info_cliente" class="alert alert-secondary py-1 px-2 d-none small">
+                                    <strong>NIT/NRC:</strong> <span id="lbl_nit_nrc"></span> | 
+                                    <strong>Contribuyente:</strong> <span id="lbl_es_contri"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="row align-items-end bg-light p-3 rounded mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold">Buscar Producto</label>
+                                <select class="form-select" id="buscar_producto" style="width: 100%;"></select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">Stock</label>
+                                <input type="text" class="form-control text-center bg-white" id="stock_actual" readonly>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">Precio</label>
+                                <input type="number" class="form-control text-end" id="precio_venta" step="0.01">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small fw-bold">Cantidad</label>
+                                <input type="number" class="form-control text-center" id="cantidad_venta" value="1" min="1">
+                            </div>
+                            <div class="col-md-1">
+                                <button type="button" class="btn btn-primary w-100" id="btnAgregarProducto">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm table-striped" id="tablaDetalleVenta">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Descripción</th>
+                                        <th class="text-center">Cant.</th>
+                                        <th class="text-end">Precio U.</th>
+                                        <th class="text-end">Gravado</th>
+                                        <th class="text-end">IVA</th>
+                                        <th class="text-end">Total</th>
+                                        <th class="text-center">Quitar</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    </tbody>
+                                <tfoot>
+                                    <tr>
+                                        <td colspan="6" class="text-end fw-bold">Subtotal Gravado:</td>
+                                        <td class="text-end fw-bold" id="sum_gravado">$0.00</td>
+                                        <td></td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="6" class="text-end fw-bold">Total IVA:</td>
+                                        <td class="text-end fw-bold" id="sum_iva">$0.00</td>
+                                        <td></td>
+                                    </tr>
+                                    <tr class="bg-warning">
+                                        <td colspan="6" class="text-end fw-bold fs-5">TOTAL A PAGAR:</td>
+                                        <td class="text-end fw-bold fs-5" id="sum_total">$0.00</td>
+                                        <td></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+
+                        <div class="d-grid gap-2 mt-3">
+                            <button type="button" class="btn btn-success btn-lg" id="btnGuardarVenta">
+                                <i class="fas fa-check-circle me-2"></i> FINALIZAR VENTA
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="./js/ventas/Ventas.js"></script>
+{% endblock %}

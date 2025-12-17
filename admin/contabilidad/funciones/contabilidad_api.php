@@ -46,10 +46,18 @@ function registrarAsientoAutomatico($pdo, $codigo_institucion, $datos_encabezado
     $usuarioRegistro = $datos_encabezado['usuarioRegistro'] ?? 'Sistema';
 
     try {
-        $pdo->beginTransaction();
+      // Verificamos si ya venimos dentro de una transacción (como en Compras)
+            $transaccion_propia = false;
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $transaccion_propia = true; // Marcamos que esta función es la dueña
+            }
 
         // 1. CALCULAR EL PRÓXIMO NÚMERO DE ASIENTO (Usando la lógica que ya implementaste)
-        $sql_next_num = "SELECT COALESCE(MAX(numero_asiento), 0) + 1 AS next_number FROM asientos_contables WHERE codigo_institucion = :codigo_institucion AND EXTRACT(YEAR FROM fecha_asiento) = EXTRACT(YEAR FROM :fecha_asiento)";
+        $sql_next_num = "SELECT COALESCE(MAX(numero_asiento), 0) + 1 as next_number
+                                FROM asientos_contables 
+                                WHERE codigo_institucion = :codigo_institucion 
+                                AND EXTRACT(YEAR FROM fecha_asiento) = EXTRACT(YEAR FROM CAST(:fecha_asiento AS DATE))";
         $stmt_next_num = $pdo->prepare($sql_next_num);
         $stmt_next_num->bindParam(':codigo_institucion', $codigo_institucion);
         $stmt_next_num->bindParam(':fecha_asiento', $fechaAsiento);
@@ -82,11 +90,17 @@ function registrarAsientoAutomatico($pdo, $codigo_institucion, $datos_encabezado
             ]);
         }
 
-        $pdo->commit();
+        // Solo hacemos commit si nosotros abrimos la transacción
+            if ($transaccion_propia) {
+                $pdo->commit();
+            }
         return ['respuesta' => true, 'mensaje' => 'Asiento registrado automáticamente (No. ' . $next_numero_asiento . ')', 'numero_asiento' => $next_numero_asiento];
 
     } catch (PDOException $e) {
-        $pdo->rollBack();
+        // Solo hacemos rollback si nosotros abrimos la transacción
+        if ($transaccion_propia) {
+            $pdo->rollBack();
+        }
         return ['respuesta' => false, 'mensaje' => 'Error de BD al registrar asiento: ' . $e->getMessage()];
     }
 }

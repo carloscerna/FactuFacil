@@ -167,6 +167,12 @@ $(function () {
         
         $('#codigo').val('Pendiente...');
         
+        // --- AGREGAR ESTO ---
+            $('#categoria_contribuyente').val('OTRO'); // Valor por defecto
+            $('#es_contribuyente').prop('checked', false); // Desmarcar
+            $('#razon_social').val('');
+        // -----
+
         $('.form-control').removeClass('is-invalid is-valid');
         
         cargarCatalogos();
@@ -223,7 +229,16 @@ $(function () {
 
                         setTimeout(function() {
                             $('#selectDistrito').val(cliente.codigo_distrito);
-                        }, 1000);
+                        }, 1500);
+
+                        // --- AGREGAR ESTAS LÍNEAS ---
+                                $('#razon_social').val(cliente.razon_social);
+                                $('#categoria_contribuyente').val(cliente.categoria_contribuyente || 'OTRO');
+                                
+                        // Manejo inteligente del booleano para el checkbox
+                                let esContri = (cliente.es_contribuyente === true || cliente.es_contribuyente === 't' || cliente.es_contribuyente === 'true' || cliente.es_contribuyente === 1);
+                                $('#es_contribuyente').prop('checked', esContri);
+                        // ----------------------------
 
                         $('#clienteModal').modal('show');
                     }

@@ -47,9 +47,40 @@
                         <div class="col-md-9 mb-3"><label>Nombre Empresa</label><input type="text" class="form-control" name="cliente_empresa" id="cliente_empresa"></div>
                     </div>
                     <div class="row">
+                        <div class="mb-3">
+                        <label class="form-label fw-bold">Razón Social <small class="text-muted">(Solo para Personas Jurídicas / Empresas)</small></label>
+                        <input type="text" class="form-control" name="razon_social" id="razon_social" placeholder="Ej: INVERSIONES EL SOL S.A. DE C.V.">
+                    </div>
                         <div class="col-md-6 mb-3"><label>Nombres</label><input type="text" class="form-control" name="nombres" id="nombres" required></div>
                         <div class="col-md-6 mb-3"><label>Apellidos</label><input type="text" class="form-control" name="apellidos" id="apellidos"></div>
                     </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Categoría Contribuyente</label>
+                            <select class="form-select" name="categoria_contribuyente" id="categoria_contribuyente">
+                                <option value="OTRO">Otro / Pequeño</option>
+                                <option value="MEDIANO">Mediano Contribuyente</option>
+                                <option value="GRAN_CONTRIBUYENTE">Gran Contribuyente</option>
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <div class="p-3 border rounded bg-light d-flex align-items-center h-100">
+                                
+                                <div class="form-check form-switch m-0 p-0">
+                                    <input class="form-check-input" type="checkbox" id="es_contribuyente" name="es_contribuyente" style="transform: scale(1.3); margin-left: 0 !important;">
+                                </div>
+
+                                <div class="ms-5"> <label class="form-check-label fw-bold d-block" for="es_contribuyente" style="cursor: pointer;">
+                                        ¿Es Contribuyente de IVA?
+                                    </label>
+                                    <div class="text-muted small">Activar si emite Crédito Fiscal (CCF)</div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row">
                         <div class="col-md-4 mb-3"><label>DUI</label><input type="text" class="form-control" name="dui" id="dui"></div>
                         <div class="col-md-4 mb-3"><label>NIT</label><input type="text" class="form-control" name="nit" id="nit"></div>
