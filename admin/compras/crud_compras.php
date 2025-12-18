@@ -546,126 +546,174 @@ case 'guardarCompra':
                 throw new Exception("Producto sin código de proveedor: " . ($producto['descripcion'] ?? 'Sin descripción'));
             }
 
-            // --- LÓGICA DE PRECIOS AUTOMÁTICA ---
-            // 1. Definir valores por defecto
-            $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; 
-            $ganancia_codigo = $producto['codigo_ganancia'] ?? '02';    
-            $nuevo_costo = floatval($producto['precio_costo']);
+        // --- A. LÓGICA DE COSTO NETO (Detectar si viene con IVA) ---
+        $costo_recibido = floatval($producto['precio_costo']); // Precio que viene en el JSON
+        $tipo_dte_compra = $compra_data['tipo_dte'] ?? '03'; // 01: Factura, 03: CCF
 
-            // 2. Obtener porcentajes reales de la BD
-            // A. Impuesto
-            $sql_imp = "SELECT porcentaje, tipo_impuesto, monto_fijo FROM cat_015 WHERE codigo = ?";
-            $stmt_imp = $pdo->prepare($sql_imp);
-            $stmt_imp->execute([$impuesto_codigo]);
-            $info_imp = $stmt_imp->fetch(PDO::FETCH_ASSOC);
+        // Si es Factura (01) o Consumidor Final, el precio trae IVA incluido.
+        // Para el sistema, el "Costo" debe ser limpio (Neto).
+        if ($tipo_dte_compra === '01') {
+            $nuevo_costo = round($costo_recibido / 1.13, 4); // Le quitamos el IVA
+        } else {
+            // Si es CCF (03), asumimos que el precio viene sin IVA (Neto)
+            $nuevo_costo = $costo_recibido;
+        }
 
-            // B. Ganancia
-            $sql_gan = "SELECT porcentaje FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?";
-            $stmt_gan = $pdo->prepare($sql_gan);
-            $stmt_gan->execute([$ganancia_codigo, $codigo_institucion_sesion]);
-            $info_gan = $stmt_gan->fetch(PDO::FETCH_ASSOC);
+        // --- B. DEFINIR PARÁMETROS DE VENTA ---
+        $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; // '20' suele ser IVA 13%
+        
+        // Intentamos usar el código del JSON, si falla, usaremos uno por defecto
+        $ganancia_codigo_json = $producto['codigo_ganancia'] ?? null; 
+        
+        // --- C. CONSULTAR BD ---
+        
+        // 1. Impuesto
+        $sql_imp = "SELECT porcentaje, tipo_impuesto, monto_fijo FROM cat_015 WHERE codigo = ?";
+        $stmt_imp = $pdo->prepare($sql_imp);
+        $stmt_imp->execute([$impuesto_codigo]);
+        $info_imp = $stmt_imp->fetch(PDO::FETCH_ASSOC);
 
-            // 3. Calcular Precio de Venta
-            $factor_impuesto = 1;
-            $monto_impuesto_fijo = 0;
+       // 2. Ganancia (Búsqueda Blindada)
+       $info_gan = false;
             
-            if ($info_imp) {
-                if ($info_imp['tipo_impuesto'] === 'PORCENTAJE') {
-                    $factor_impuesto = 1 + ($info_imp['porcentaje'] / 100);
-                } elseif ($info_imp['tipo_impuesto'] === 'MONETARIO') {
-                    $monto_impuesto_fijo = floatval($info_imp['monto_fijo']);
-                }
+       // A. Primero intentamos buscar con el código que trae el JSON (si trae alguno)
+       if ($ganancia_codigo_json) {
+           $sql_gan = "SELECT porcentaje, codigo FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?";
+           $stmt_gan = $pdo->prepare($sql_gan);
+           $stmt_gan->execute([$ganancia_codigo_json, $codigo_institucion_sesion]);
+           $info_gan = $stmt_gan->fetch(PDO::FETCH_ASSOC);
+       }
+
+       // B. Si NO encontró (o el JSON venía vacío), FORZAMOS 'GAN002' (30%)
+       if (!$info_gan) {
+           $codigo_ganancia_defecto = 'GAN002'; // <--- AQUÍ FORZAMOS TU CÓDIGO
+           
+           $sql_gan_def = "SELECT porcentaje, codigo FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?";
+           $stmt_gan_def = $pdo->prepare($sql_gan_def);
+           $stmt_gan_def->execute([$codigo_ganancia_defecto, $codigo_institucion_sesion]);
+           $info_gan = $stmt_gan_def->fetch(PDO::FETCH_ASSOC);
+           
+           if ($info_gan) {
+               $ganancia_codigo = $info_gan['codigo'];
+           } else {
+               // C. Plan de emergencia: Si borraste GAN002, usar 30% fijo para que no dé error
+               $ganancia_codigo = 'GAN002'; 
+               $info_gan = ['porcentaje' => 30.00]; 
+           }
+       } else {
+           $ganancia_codigo = $info_gan['codigo'];
+       }
+
+        // --- D. CÁLCULO PRECIO VENTA ---
+        
+        // Factor Impuesto (Para agregar IVA al costo neto)
+        $factor_impuesto = 1;
+        $monto_impuesto_fijo = 0;
+        if ($info_imp) {
+            if ($info_imp['tipo_impuesto'] === 'PORCENTAJE') {
+                $factor_impuesto = 1 + ($info_imp['porcentaje'] / 100);
+            } elseif ($info_imp['tipo_impuesto'] === 'MONETARIO') {
+                $monto_impuesto_fijo = floatval($info_imp['monto_fijo']);
             }
+        }
 
-            $factor_ganancia = 1 + (($info_gan['porcentaje'] ?? 0) / 100);
+        // Factor Ganancia
+        $factor_ganancia = 1 + (($info_gan['porcentaje'] ?? 0) / 100);
 
-            // FÓRMULA: (Costo + Impuestos) * Ganancia
-            $precio_base_con_impuestos = ($nuevo_costo * $factor_impuesto) + $monto_impuesto_fijo;
-            $nuevo_precio_venta = round($precio_base_con_impuestos * $factor_ganancia, 4);
+        // FÓRMULA FINAL: (CostoNeto * (1+IVA)) * (1+Ganancia)
+        // Ejemplo: ($10.00 * 1.13) * 1.30 = $14.69
+        $precio_base_con_impuestos = ($nuevo_costo * $factor_impuesto) + $monto_impuesto_fijo;
+        $nuevo_precio_venta = round($precio_base_con_impuestos * $factor_ganancia, 4);
 
-            // ------------------------------------
+        // --- DEBUG LOG (Para verificar que ahora sí toma ganancia) ---
+        error_log("PROD: " . ($producto['descripcion']));
+        error_log("COSTO ORIG: $costo_recibido | TIPO DTE: $tipo_dte_compra | COSTO NETO CALC: $nuevo_costo");
+        error_log("GANANCIA USADA: " . ($info_gan['porcentaje'] ?? 0) . "% (Codigo: $ganancia_codigo)");
+        error_log("PRECIO VENTA: $nuevo_precio_venta");
+        // -------------------------------------------------------------
 
-            // Buscar producto por codigo_proveedor
-            // CORRECCIÓN: Usamos 'stock_actual'
-            $sql_find = "SELECT id_productos, codigo_interno, stock_actual 
-                         FROM catalogo_productos 
-                         WHERE codigo_proveedor = ? AND codigo_institucion = ?";
-            $stmt_find = $pdo->prepare($sql_find);
-            $stmt_find->execute([$producto['codigo_proveedor'], $codigo_institucion_sesion]);
-            $producto_db = $stmt_find->fetch(PDO::FETCH_ASSOC);
+        // --- E. ACTUALIZACIÓN EN BASE DE DATOS ---
 
-            if ($producto_db) {
-                // A. PRODUCTO EXISTENTE: Actualizar Costo, Stock Y PRECIO VENTA
-                $producto['id_productos'] = $producto_db['id_productos'];
-                $producto['codigo_interno'] = $producto_db['codigo_interno'];
+        // Buscar producto existente
+        $sql_find = "SELECT id_productos, codigo_interno, stock_actual 
+                     FROM catalogo_productos 
+                     WHERE codigo_proveedor = ? AND codigo_institucion = ?";
+        $stmt_find = $pdo->prepare($sql_find);
+        $stmt_find->execute([$producto['codigo_proveedor'], $codigo_institucion_sesion]);
+        $producto_db = $stmt_find->fetch(PDO::FETCH_ASSOC);
 
-                // CORRECCIÓN: Cambiado 'existencias' por 'stock_actual'
-                $sql_update = "UPDATE catalogo_productos 
-                               SET precio_costo = ?, 
-                                   precio_unitario = ?,
-                                   stock_actual = stock_actual + ?
-                               WHERE id_productos = ?";
-                $pdo->prepare($sql_update)->execute([
-                    $nuevo_costo, 
-                    $nuevo_precio_venta, 
-                    $producto['cantidad'], 
-                    $producto['id_productos']
-                ]);
+        if ($producto_db) {
+            // ACTUALIZAR EXISTENTE
+            $producto['id_productos'] = $producto_db['id_productos'];
+            $producto['codigo_interno'] = $producto_db['codigo_interno'];
 
-            } else {
-                // B. PRODUCTO NUEVO: Insertar todo
-                if (empty($producto['codigo_categoria'])) {
-                    $producto['codigo_categoria'] = 'CAT008'; 
-                }
-                $codigo_producto_generado = generarCodigoProducto($pdo, $producto['codigo_categoria'], $codigo_institucion_sesion);
-
-                // CORRECCIÓN: Cambiado 'existencias' por 'stock_actual' en el INSERT
-                $sql_insert_producto = "INSERT INTO catalogo_productos (
-                    codigo_interno, codigo_institucion, codigo_categoria,
-                    descripcion, precio_costo, precio_unitario, impuesto_aplicable, unidad_medida,
-                    codigo_proveedor, stock_actual, fecha_vencimiento, codigo_ganancia
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING id_productos";
-
-                $stmt_insert_producto = $pdo->prepare($sql_insert_producto);
-                $stmt_insert_producto->execute([
-                    $codigo_producto_generado,
-                    $codigo_institucion_sesion,
-                    $producto['codigo_categoria'],
-                    $producto['descripcion'],
-                    $nuevo_costo,
-                    $nuevo_precio_venta,
-                    $impuesto_codigo,
-                    $producto['unidad_medida'],
-                    $producto['codigo_proveedor'],
-                    $producto['cantidad'], // stock inicial = cantidad comprada
-                    $producto['fecha_vencimiento'] ?? null,
-                    $ganancia_codigo
-                ]);
-                $producto['id_productos'] = $stmt_insert_producto->fetchColumn();
-                $producto['codigo_interno'] = $codigo_producto_generado;
-            }
-
-            // Insertar detalle de compra (Histórico)
-            $sql_detalle = "INSERT INTO compras_detalle (
-                    id_compra, codigo_producto, cantidad, unidad_medida, 
-                    precio_costo, precio_unitario, iva, descuento,
-                    ventas_no_suj, ventas_exenta, ventas_gravada
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt_detalle = $pdo->prepare($sql_detalle);
-            $stmt_detalle->execute([
-                $id_compra,
-                $producto['codigo_interno'],
-                $producto['cantidad'],
-                $producto['unidad_medida'],
-                $nuevo_costo,
-                $producto['precio_unitario'], // Precio de compra original (del JSON)
-                $producto['iva'],
-                $producto['descuento'],
-                $producto['venta_no_suj'] ?? 0,
-                $producto['venta_exenta'] ?? 0,
-                $producto['venta_gravada'] ?? 0
+            $sql_update = "UPDATE catalogo_productos 
+                           SET precio_costo = ?, 
+                               precio_unitario = ?,
+                               stock_actual = stock_actual + ?,
+                               codigo_ganancia = ?
+                           WHERE id_productos = ?";
+            $pdo->prepare($sql_update)->execute([
+                $nuevo_costo, 
+                $nuevo_precio_venta, 
+                $producto['cantidad'], 
+                $ganancia_codigo, // Actualizamos también el código de ganancia
+                $producto['id_productos']
             ]);
+
+        } else {
+            // CREAR NUEVO
+            if (empty($producto['codigo_categoria'])) {
+                $producto['codigo_categoria'] = 'CAT008'; 
+            }
+            $codigo_producto_generado = generarCodigoProducto($pdo, $producto['codigo_categoria'], $codigo_institucion_sesion);
+
+            $sql_insert_producto = "INSERT INTO catalogo_productos (
+                codigo_interno, codigo_institucion, codigo_categoria,
+                descripcion, precio_costo, precio_unitario, impuesto_aplicable, unidad_medida,
+                codigo_proveedor, stock_actual, fecha_vencimiento, codigo_ganancia
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id_productos";
+
+            $stmt_insert_producto = $pdo->prepare($sql_insert_producto);
+            $stmt_insert_producto->execute([
+                $codigo_producto_generado,
+                $codigo_institucion_sesion,
+                $producto['codigo_categoria'],
+                $producto['descripcion'],
+                $nuevo_costo,
+                $nuevo_precio_venta,
+                $impuesto_codigo,
+                $producto['unidad_medida'],
+                $producto['codigo_proveedor'],
+                $producto['cantidad'],
+                $producto['fecha_vencimiento'] ?? null,
+                $ganancia_codigo
+            ]);
+            $producto['id_productos'] = $stmt_insert_producto->fetchColumn();
+            $producto['codigo_interno'] = $codigo_producto_generado;
+        }
+
+        // Insertar detalle de compra
+        $sql_detalle = "INSERT INTO compras_detalle (
+                id_compra, codigo_producto, cantidad, unidad_medida, 
+                precio_costo, precio_unitario, iva, descuento,
+                ventas_no_suj, ventas_exenta, ventas_gravada
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt_detalle = $pdo->prepare($sql_detalle);
+        $stmt_detalle->execute([
+            $id_compra,
+            $producto['codigo_interno'],
+            $producto['cantidad'],
+            $producto['unidad_medida'],
+            $nuevo_costo, // Guardamos el neto
+            $costo_recibido, // Guardamos el precio original de la factura (con IVA si era 01)
+            $producto['iva'],
+            $producto['descuento'],
+            $producto['venta_no_suj'] ?? 0,
+            $producto['venta_exenta'] ?? 0,
+            $producto['venta_gravada'] ?? 0
+        ]);
             
             // (Opcional) Actualización extra de vencimientos si lo necesitas, usando stock_actual
             // Si ya actualizamos arriba, este bloque podría ser redundante, pero si lo dejas
