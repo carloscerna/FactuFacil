@@ -335,18 +335,38 @@ function actualizarTotales() {
         // ---------------------------------------------------------
         else {
             
-            // 1. Calculamos los totales recorriendo el array de productos
-            let sumGravado = 0;
-            let sumIva = 0;
-            let sumTotal = 0;
+           // 1. Calculamos los totales recorriendo el array
+        let sumGravado = 0;
+        let sumIva = 0;
+        let sumTotal = 0;
+        let tipoDoc = $('[name="tipo_documento"]').val(); // '01', '03'
 
             productosCompra.forEach(p => {
-                // Asegúrate de que tu objeto producto tenga 'subtotal' e 'iva' calculado
-                // Si 'precio_costo' ya incluye IVA (Factura), ajusta la lógica aquí si es necesario
-                sumGravado += parseFloat(p.subtotal || 0); 
-                sumIva += parseFloat(p.iva || 0);
+                let precio = parseFloat(p.precio_costo || p.precio_unitario || 0); // Precio ingresado
+                let cantidad = parseFloat(p.cantidad || 0);
+                let totalLinea = precio * cantidad;
+
+                // CÁLCULO DE IVA SEGÚN TIPO DE DOCUMENTO
+                if (tipoDoc === '01') { 
+                    // FACTURA: El precio tiene IVA incluido. Hay que extraerlo.
+                    // Ejemplo: Precio $1.13 -> Neto $1.00 -> IVA $0.13
+                    let base = totalLinea / 1.13;
+                    let iva = totalLinea - base;
+                    
+                    sumGravado += base;
+                    sumIva += iva;
+                    sumTotal += totalLinea; // El total a pagar es el mismo
+                } else {
+                    // CCF (03): El precio es Neto. El IVA se suma aparte.
+                    // Ejemplo: Precio $1.00 -> Neto $1.00 -> IVA $0.13 -> Total $1.13
+                    let base = totalLinea;
+                    let iva = totalLinea * 0.13;
+                    
+                    sumGravado += base;
+                    sumIva += iva;
+                    sumTotal += (base + iva);
+                }
             });
-            sumTotal = sumGravado + sumIva;
 
             // 2. Construimos el Objeto Cabecera
             let cabeceraManual = {

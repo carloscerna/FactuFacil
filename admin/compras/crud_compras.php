@@ -129,56 +129,44 @@ case 'guardarCompra':
             ]);
             $id_compra = $stmt_cab->fetchColumn();
 
-            // 2. Procesar Detalle de Productos
+           // 2. Procesar Detalle de Productos (MANUAL)
             foreach ($datos_detalle as $producto) {
                 
-                // --- A. RECUPERAR PRECIO DEL FORMULARIO ---
-                // Corregimos el error: Buscamos 'precio_unitario' O 'precio_costo'
-                // Este es el "Precio de Papel", el que escribiste en la casilla.
+                // --- A. OBTENER DATOS BASICOS ---
+                // Leemos lo que escribiste en el input. Puede venir como 'precio_costo' o 'precio_unitario'
                 $precio_papel = floatval($producto['precio_unitario'] ?? $producto['precio_costo'] ?? 0);
-                
-                // --- B. LÓGICA AVANZADA DE TIPOS DTE (EL SALVADOR) ---
-                $tipo_dte = $datos_cabecera['tipo_documento']; // '01', '03', '05', '14', etc.
+                $cantidad_input = floatval($producto['cantidad']);
+
+                // --- B. LÓGICA DE TIPOS DTE (CASUÍSTICA EL SALVADOR) ---
+                $tipo_dte = $datos_cabecera['tipo_documento']; // 01, 03, 05, etc.
                 
                 $costo_neto_kardex = 0;
-                $factor_cantidad = 1; // 1 = Entrada, -1 = Salida (Devolución)
+                $factor_cantidad = 1; // 1 = Entrada (Suma), -1 = Devolución (Resta)
 
                 switch ($tipo_dte) {
                     case '01': // FACTURA (IVA Incluido)
-                        // Legislación: Al ser contribuyente, debes separar el IVA para encontrar el costo real.
+                        // Si escribiste $1.13, el costo real es $1.00
                         $costo_neto_kardex = round($precio_papel / 1.13, 4);
                         $factor_cantidad = 1;
                         break;
 
-                    case '03': // COMPROBANTE DE CRÉDITO FISCAL (Neto)
-                    case '11': // FACTURA DE EXPORTACIÓN (Generalmente tasa 0%)
-                        // El precio ingresado ya es el costo neto.
+                    case '03': // CRÉDITO FISCAL (Neto)
+                    case '11': // EXPORTACIÓN
+                    case '14': // SUJETO EXCLUIDO
+                        // El precio que escribiste ya es el costo neto
                         $costo_neto_kardex = $precio_papel;
                         $factor_cantidad = 1;
                         break;
 
-                    case '14': // SUJETO EXCLUIDO (Sin IVA)
-                        // No hay IVA involucrado, el costo total es el precio pagado.
+                    case '05': // NOTA DE CRÉDITO (Devolución)
+                        // Si estás en COMPRAS y metes una NC, estás devolviendo producto.
+                        // El stock debe BAJAR.
                         $costo_neto_kardex = $precio_papel;
-                        $factor_cantidad = 1;
-                        break;
-
-                    case '04': // NOTA DE REMISIÓN
-                        // Sirve para amparar traslado. Si se usa para ingresar stock, el valor es referencial neto.
-                        $costo_neto_kardex = $precio_papel;
-                        $factor_cantidad = 1;
-                        break;
-
-                    case '05': // NOTA DE CRÉDITO (Devolución sobre Compra)
-                        // OJO: Una Nota de Crédito en Compras significa que DEVOLVISTE mercadería al proveedor.
-                        // Por tanto, el inventario debe DISMINUIR.
-                        // Asumimos que la NC hace referencia a un CCF, por lo que el precio viene Neto.
-                        $costo_neto_kardex = $precio_papel;
-                        $factor_cantidad = -1; // ¡ESTO RESTARÁ DEL INVENTARIO!
+                        $factor_cantidad = -1; // <--- ESTO HARÁ QUE SE RESTE
                         break;
 
                     default:
-                        // Por seguridad, asumimos comportamiento de CCF (Neto)
+                        // Por defecto asumimos neto y entrada (Comportamiento CCF)
                         $costo_neto_kardex = $precio_papel;
                         $factor_cantidad = 1;
                         break;
@@ -187,15 +175,14 @@ case 'guardarCompra':
                 // --- C. BUSCAR/FORZAR GANANCIA ---
                 $ganancia_codigo = $producto['codigo_ganancia'] ?? ''; 
                 
-                // Intentar buscar la ganancia seleccionada
                 $sql_gan = "SELECT porcentaje, codigo FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?";
                 $stmt_gan = $pdo->prepare($sql_gan);
                 $stmt_gan->execute([$ganancia_codigo, $codigo_institucion_sesion]);
                 $info_gan = $stmt_gan->fetch(PDO::FETCH_ASSOC);
 
-                // Si no existe, FORZAMOS 'GAN002' (30%)
+                // Si no seleccionaste ganancia, FORZAMOS 'GAN002' (30%)
                 if (!$info_gan) {
-                    $codigo_ganancia_defecto = 'GAN002';
+                    $codigo_ganancia_defecto = 'GAN002'; // Ajusta a tu código real
                     $stmt_gan_def = $pdo->prepare("SELECT porcentaje, codigo FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?");
                     $stmt_gan_def->execute([$codigo_ganancia_defecto, $codigo_institucion_sesion]);
                     $info_gan = $stmt_gan_def->fetch(PDO::FETCH_ASSOC);
@@ -203,19 +190,20 @@ case 'guardarCompra':
                     if ($info_gan) {
                         $ganancia_codigo = $info_gan['codigo'];
                     } else {
+                        // Fallback de emergencia
                         $ganancia_codigo = 'GAN002';
                         $info_gan = ['porcentaje' => 30.00]; 
                     }
                 }
 
-                // --- D. BUSCAR IMPUESTO ---
-                $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; 
+                // --- D. BUSCAR IMPUESTO (Para calcular Precio Venta) ---
+                $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; // IVA 13%
                 $sql_imp = "SELECT porcentaje, tipo_impuesto, monto_fijo FROM cat_015 WHERE codigo = ?";
                 $stmt_imp = $pdo->prepare($sql_imp);
                 $stmt_imp->execute([$impuesto_codigo]);
                 $info_imp = $stmt_imp->fetch(PDO::FETCH_ASSOC);
 
-                // --- E. CÁLCULO DE PRECIO DE VENTA AUTOMÁTICO ---
+                // --- E. CÁLCULO DE PRECIO DE VENTA ---
                 $factor_impuesto = 1;
                 $monto_impuesto_fijo = 0;
                 
@@ -229,41 +217,41 @@ case 'guardarCompra':
 
                 $factor_ganancia = 1 + (($info_gan['porcentaje'] ?? 0) / 100);
 
-                // FÓRMULA: (CostoNeto * (1+IVA)) * (1+Ganancia)
+                // Fórmula: (CostoNeto * (1.13)) * (1.30)
                 $precio_base_con_impuestos = ($costo_neto_kardex * $factor_impuesto) + $monto_impuesto_fijo;
                 $nuevo_precio_venta = round($precio_base_con_impuestos * $factor_ganancia, 4);
 
-                // --- F. GUARDAR DETALLE COMPRA ---
-                // Aquí guardamos los DOS precios: El neto y el que venía en el papel
+                // --- F. GUARDAR HISTÓRICO DE COMPRA ---
+                // Guardamos tanto el costo neto (real) como el precio papel (referencia)
                 $sql_det = "INSERT INTO compras_detalle 
                     (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)"; 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)";
                 
                 $stmt_det = $pdo->prepare($sql_det);
                 $stmt_det->execute([
                     $id_compra,
                     $producto['codigo_interno'],
-                    $producto['cantidad'],
-                    $costo_neto_kardex, // Costo REAL (Neto) para contabilidad
-                    $precio_papel,      // Costo Histórico (Lo que decía la factura)
-                    $producto['subtotal'] ?? ($precio_papel * $producto['cantidad']),
+                    $cantidad_input, // Guardamos positivo en el historial visual
+                    $costo_neto_kardex, // Costo REAL limpio
+                    $precio_papel,      // Lo que escribiste (puede llevar IVA)
+                    $producto['subtotal'] ?? ($precio_papel * $cantidad_input),
                     $producto['iva'] ?? 0
                 ]);
 
-                // --- G. ACTUALIZAR MAESTRO DE PRODUCTOS (CATÁLOGO) ---
+                // --- G. ACTUALIZAR INVENTARIO (KARDEX) ---
                 
-                // Calculamos la cantidad real a mover (Positiva o Negativa)
-                $cantidad_a_mover = $producto['cantidad'] * $factor_cantidad;
+                // Aquí aplicamos el FACTOR CANTIDAD (1 o -1)
+                $cantidad_a_mover = $cantidad_input * $factor_cantidad;
 
                 $sql_upd = "UPDATE catalogo_productos SET 
-                                stock_actual = stock_actual + ?,  /* Si es NC, sumará un negativo (restando) */
-                                precio_costo = ?,                 /* Actualizamos costo promedio/último */
-                                precio_unitario = ?,
+                                stock_actual = stock_actual + ?, /* Suma o Resta según tipo doc */
+                                precio_costo = ?,                /* Actualiza costo promedio/último */
+                                precio_unitario = ?,             /* Actualiza Precio Venta */
                                 codigo_ganancia = ?
                             WHERE codigo_interno = ? AND codigo_institucion = ?";
                 
                 $pdo->prepare($sql_upd)->execute([
-                    $cantidad_a_mover,     // <--- AQUÍ USAMOS LA CANTIDAD CON SIGNO
+                    $cantidad_a_mover, 
                     $costo_neto_kardex,
                     $nuevo_precio_venta,
                     $ganancia_codigo,
@@ -592,9 +580,8 @@ case 'guardarCompra':
         // --- A. LÓGICA DE COSTO NETO (Detectar si viene con IVA) ---
         $costo_recibido = floatval($producto['precio_costo']); // Precio que viene en el JSON
         $tipo_dte_compra = $compra_data['tipo_dte'] ?? '03'; // 01: Factura, 03: CCF
-
-        // --- B. LÓGICA AVANZADA DE TIPOS DTE (EL SALVADOR) ---
-                $tipo_dte = $datos_cabecera['tipo_documento']; // '01', '03', '05', '14', etc.
+            // --- B. LÓGICA AVANZADA DE TIPOS DTE (EL SALVADOR) ---
+                $tipo_dte = $compra_data['tipo_dte']; // '01', '03', '05', '14', etc.
                 
                 $costo_neto_kardex = 0;
                 $factor_cantidad = 1; // 1 = Entrada, -1 = Salida (Devolución)
