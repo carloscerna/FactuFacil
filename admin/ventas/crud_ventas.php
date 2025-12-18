@@ -7,7 +7,7 @@ header('Content-Type: application/json');
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 include($path_root."/FactuFacil/includes/mainFunctions_.php");
 include($path_root."/FactuFacil/admin/contabilidad/funciones/contabilidad_api.php");
-
+/** @var PDO $dblink */
 $pdo = $dblink;
 $accion = $_POST['accion'] ?? '';
 $codigo_institucion = $_SESSION['codigo_institucion'];

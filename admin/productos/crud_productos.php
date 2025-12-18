@@ -12,6 +12,7 @@ if (empty($_SESSION['userNombre'])) {
 
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 include($path_root."/FactuFacil/includes/mainFunctions_.php");
+/** @var PDO $dblink */
 $pdo = $dblink;
 $accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
 

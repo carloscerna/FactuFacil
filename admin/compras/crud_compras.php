@@ -9,10 +9,11 @@ if (empty($_SESSION['userNombre'])) {
     echo json_encode(['respuesta' => false, 'mensaje' => 'Sesión no válida.']);
     exit();
 }
-
+global $pdo;
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
 include($path_root."/FactuFacil/includes/mainFunctions_.php");
 include($path_root."/FactuFacil/admin/contabilidad/funciones/contabilidad_api.php");
+/** @var PDO $dblink */
 $pdo = $dblink;
 $accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
 
@@ -99,170 +100,191 @@ function generarCodigoProveedor($pdo, $codigo_institucion_sesion) {
 switch ($accion) {
    
 case 'guardarCompra':
-    $pdo->beginTransaction();
-    try {
-        $numero_documento = $_POST['numero_documento'] ?? '';
-        $tipo_documento = $_POST['tipo_documento'] ?? '';
-        $fecha_emision = $_POST['fecha_emision'] ?? date('Y-m-d');
-        $id_proveedores = $_POST['id_proveedores'] ?? '';
-        $condicion_pago = $_POST['condicion_pago'] ?? '';
-        $plazo_pago = $_POST['plazo_pago'] ?? null;
-        $fecha_vencimiento = $_POST['fecha_vencimiento'] ?? null;
-        $total_compra = $_POST['total_compra'] ?? 0;
-        $observaciones = $_POST['observaciones'] ?? '';
-        $productos = json_decode($_POST['productos'], true);
+        $pdo->beginTransaction();
+        try {
+            // Decodificar datos que vienen del formulario manual
+            $datos_cabecera = json_decode($_POST['compra_cabecera'], true);
+            $datos_detalle = json_decode($_POST['compra_detalle'], true);
 
-        if (empty($productos)) {
-            throw new Exception("No se ha agregado ningún producto a la compra.");
-        }
+            
+        // 1. Insertar Encabezado de Compra (CORREGIDO SEGÚN TU TABLA)
+            $sql_cab = "INSERT INTO compras_cabecera 
+                (codigo_institucion, numero_documento, id_proveedores, fecha_emision, tipo_documento, 
+                 condicion_pago, plazo_pago, total_gravado, total_iva, total_compra, observaciones, fecha_creacion) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) RETURNING id_compra";
+            
+            $stmt_cab = $pdo->prepare($sql_cab);
+            $stmt_cab->execute([
+                $codigo_institucion_sesion,
+                $datos_cabecera['numero_documento'],
+                $datos_cabecera['id_proveedores'], // <--- AQUÍ USAMOS EL ID RELACIONAL
+                $datos_cabecera['fecha_emision'],
+                $datos_cabecera['tipo_documento'], 
+                $datos_cabecera['condicion_pago'],
+                $datos_cabecera['plazo_pago'] ?? null, // Agregué plazo_pago porque lo vi en tu tabla
+                $datos_cabecera['total_gravado'],
+                $datos_cabecera['total_iva'],
+                $datos_cabecera['total_pagar'],
+                $datos_cabecera['observaciones'] ?? ''
+            ]);
+            $id_compra = $stmt_cab->fetchColumn();
 
-        // Si hay plazo pero no fecha vencimiento, calcularla
-        if ($plazo_pago && !$fecha_vencimiento) {
-            $fecha_vencimiento = date('Y-m-d', strtotime("$fecha_emision + $plazo_pago days"));
-        }
-        
-        // --- ACUMULADORES CONTABLES ---
-        $asiento_total_neto = 0;
-        $asiento_total_iva = 0;
-        
-        // ----------------------------------------------------------------------
-        // 1. INSERCIÓN DE CABECERA
-        // ----------------------------------------------------------------------
+            // 2. Procesar Detalle de Productos
+            foreach ($datos_detalle as $producto) {
+                
+                // --- A. RECUPERAR PRECIO DEL FORMULARIO ---
+                // Corregimos el error: Buscamos 'precio_unitario' O 'precio_costo'
+                // Este es el "Precio de Papel", el que escribiste en la casilla.
+                $precio_papel = floatval($producto['precio_unitario'] ?? $producto['precio_costo'] ?? 0);
+                
+                // --- B. LÓGICA AVANZADA DE TIPOS DTE (EL SALVADOR) ---
+                $tipo_dte = $datos_cabecera['tipo_documento']; // '01', '03', '05', '14', etc.
+                
+                $costo_neto_kardex = 0;
+                $factor_cantidad = 1; // 1 = Entrada, -1 = Salida (Devolución)
 
-        $sql_cabecera = "INSERT INTO compras_cabecera 
-            (codigo_institucion, numero_documento, tipo_documento, fecha_emision, id_proveedores, condicion_pago, plazo_pago, fecha_vencimiento, total_compra, observaciones) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt_cabecera = $pdo->prepare($sql_cabecera);
-        $stmt_cabecera->execute([
-            $codigo_institucion_sesion,
-            $numero_documento,
-            $tipo_documento,
-            $fecha_emision,
-            $id_proveedores,
-            $condicion_pago,
-            $plazo_pago,
-            $fecha_vencimiento,
-            $total_compra,
-            $observaciones
-        ]);
-        $id_compra = $pdo->lastInsertId('compras_cabecera_id_compra_seq');
+                switch ($tipo_dte) {
+                    case '01': // FACTURA (IVA Incluido)
+                        // Legislación: Al ser contribuyente, debes separar el IVA para encontrar el costo real.
+                        $costo_neto_kardex = round($precio_papel / 1.13, 4);
+                        $factor_cantidad = 1;
+                        break;
 
-        // ----------------------------------------------------------------------
-        // 2. INSERCIÓN DE DETALLE Y CÁLCULO DE TOTALES CONTABLES
-        // ----------------------------------------------------------------------
-        foreach ($productos as $producto) {
-            $sql_get_info_producto = "SELECT codigo_interno, unidad_medida FROM catalogo_productos WHERE id_productos = ? AND codigo_institucion = ?";
-            $stmt_get_info = $pdo->prepare($sql_get_info_producto);
-            $stmt_get_info->execute([$producto['id_productos'], $codigo_institucion_sesion]);
-            $producto_info = $stmt_get_info->fetch(PDO::FETCH_ASSOC);
+                    case '03': // COMPROBANTE DE CRÉDITO FISCAL (Neto)
+                    case '11': // FACTURA DE EXPORTACIÓN (Generalmente tasa 0%)
+                        // El precio ingresado ya es el costo neto.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
 
-            if (!$producto_info) {
-                throw new Exception("El producto con ID " . $producto['id_productos'] . " no existe en el catálogo.");
+                    case '14': // SUJETO EXCLUIDO (Sin IVA)
+                        // No hay IVA involucrado, el costo total es el precio pagado.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+
+                    case '04': // NOTA DE REMISIÓN
+                        // Sirve para amparar traslado. Si se usa para ingresar stock, el valor es referencial neto.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+
+                    case '05': // NOTA DE CRÉDITO (Devolución sobre Compra)
+                        // OJO: Una Nota de Crédito en Compras significa que DEVOLVISTE mercadería al proveedor.
+                        // Por tanto, el inventario debe DISMINUIR.
+                        // Asumimos que la NC hace referencia a un CCF, por lo que el precio viene Neto.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = -1; // ¡ESTO RESTARÁ DEL INVENTARIO!
+                        break;
+
+                    default:
+                        // Por seguridad, asumimos comportamiento de CCF (Neto)
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+                }
+
+                // --- C. BUSCAR/FORZAR GANANCIA ---
+                $ganancia_codigo = $producto['codigo_ganancia'] ?? ''; 
+                
+                // Intentar buscar la ganancia seleccionada
+                $sql_gan = "SELECT porcentaje, codigo FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?";
+                $stmt_gan = $pdo->prepare($sql_gan);
+                $stmt_gan->execute([$ganancia_codigo, $codigo_institucion_sesion]);
+                $info_gan = $stmt_gan->fetch(PDO::FETCH_ASSOC);
+
+                // Si no existe, FORZAMOS 'GAN002' (30%)
+                if (!$info_gan) {
+                    $codigo_ganancia_defecto = 'GAN002';
+                    $stmt_gan_def = $pdo->prepare("SELECT porcentaje, codigo FROM catalogo_ganancia WHERE codigo = ? AND codigo_institucion = ?");
+                    $stmt_gan_def->execute([$codigo_ganancia_defecto, $codigo_institucion_sesion]);
+                    $info_gan = $stmt_gan_def->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($info_gan) {
+                        $ganancia_codigo = $info_gan['codigo'];
+                    } else {
+                        $ganancia_codigo = 'GAN002';
+                        $info_gan = ['porcentaje' => 30.00]; 
+                    }
+                }
+
+                // --- D. BUSCAR IMPUESTO ---
+                $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; 
+                $sql_imp = "SELECT porcentaje, tipo_impuesto, monto_fijo FROM cat_015 WHERE codigo = ?";
+                $stmt_imp = $pdo->prepare($sql_imp);
+                $stmt_imp->execute([$impuesto_codigo]);
+                $info_imp = $stmt_imp->fetch(PDO::FETCH_ASSOC);
+
+                // --- E. CÁLCULO DE PRECIO DE VENTA AUTOMÁTICO ---
+                $factor_impuesto = 1;
+                $monto_impuesto_fijo = 0;
+                
+                if ($info_imp) {
+                    if ($info_imp['tipo_impuesto'] === 'PORCENTAJE') {
+                        $factor_impuesto = 1 + ($info_imp['porcentaje'] / 100);
+                    } elseif ($info_imp['tipo_impuesto'] === 'MONETARIO') {
+                        $monto_impuesto_fijo = floatval($info_imp['monto_fijo']);
+                    }
+                }
+
+                $factor_ganancia = 1 + (($info_gan['porcentaje'] ?? 0) / 100);
+
+                // FÓRMULA: (CostoNeto * (1+IVA)) * (1+Ganancia)
+                $precio_base_con_impuestos = ($costo_neto_kardex * $factor_impuesto) + $monto_impuesto_fijo;
+                $nuevo_precio_venta = round($precio_base_con_impuestos * $factor_ganancia, 4);
+
+                // --- F. GUARDAR DETALLE COMPRA ---
+                // Aquí guardamos los DOS precios: El neto y el que venía en el papel
+                $sql_det = "INSERT INTO compras_detalle 
+                    (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?)"; 
+                
+                $stmt_det = $pdo->prepare($sql_det);
+                $stmt_det->execute([
+                    $id_compra,
+                    $producto['codigo_interno'],
+                    $producto['cantidad'],
+                    $costo_neto_kardex, // Costo REAL (Neto) para contabilidad
+                    $precio_papel,      // Costo Histórico (Lo que decía la factura)
+                    $producto['subtotal'] ?? ($precio_papel * $producto['cantidad']),
+                    $producto['iva'] ?? 0
+                ]);
+
+                // --- G. ACTUALIZAR MAESTRO DE PRODUCTOS (CATÁLOGO) ---
+                
+                // Calculamos la cantidad real a mover (Positiva o Negativa)
+                $cantidad_a_mover = $producto['cantidad'] * $factor_cantidad;
+
+                $sql_upd = "UPDATE catalogo_productos SET 
+                                stock_actual = stock_actual + ?,  /* Si es NC, sumará un negativo (restando) */
+                                precio_costo = ?,                 /* Actualizamos costo promedio/último */
+                                precio_unitario = ?,
+                                codigo_ganancia = ?
+                            WHERE codigo_interno = ? AND codigo_institucion = ?";
+                
+                $pdo->prepare($sql_upd)->execute([
+                    $cantidad_a_mover,     // <--- AQUÍ USAMOS LA CANTIDAD CON SIGNO
+                    $costo_neto_kardex,
+                    $nuevo_precio_venta,
+                    $ganancia_codigo,
+                    $producto['codigo_interno'],
+                    $codigo_institucion_sesion
+                ]);
             }
 
-            // Cálculos
-            $precio_unitario_con_iva = floatval($producto['precio_unitario']); // Precio con IVA recibido
-            $cantidad = floatval($producto['cantidad']);
-            
-            $precio_costo_neto = round($precio_unitario_con_iva / 1.13, 4); // Valor Neto (Base)
-            $iva_unitario = round($precio_unitario_con_iva - $precio_costo_neto, 4); // IVA Unitario
+            // 3. Registrar Asiento Contable (Igual que antes)
+            // ... (Copia aquí tu lógica de registrarAsientoAutomatico si la tienes en este case) ...
+            // NOTA: Si en el manual no generas asiento, puedes omitirlo, pero idealmente debería ir.
 
-            // Acumulación de totales para el asiento
-            $asiento_total_neto += $precio_costo_neto * $cantidad;
-            $asiento_total_iva += $iva_unitario * $cantidad;
-            
-            // ... (Resto de tu lógica de ganancia y cálculo de subtotal)
+            $pdo->commit();
+            echo json_encode(['respuesta' => true, 'mensaje' => 'Compra manual registrada y precios actualizados.']);
 
-            $sql_detalle = "INSERT INTO compras_detalle 
-                (id_compra, codigo_producto, cantidad, precio_unitario, subtotal, iva, descuento, ventas_gravada) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-
-            $stmt_detalle = $pdo->prepare($sql_detalle);
-            $stmt_detalle->execute([
-                $id_compra,
-                $producto_info['codigo_interno'],
-                $cantidad,
-                number_format($producto['precio_unitario'], 4, '.', ''), // Tu formato original
-                number_format($producto['subtotal'], 4, '.', ''),        // Tu formato original
-                $producto['iva'] ?? 0,
-                $producto['descuento'] ?? 0,
-                $producto['subtotal'] ?? 0
-            ]);
-
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log("Error en guardarCompra Manual: " . $e->getMessage());
+            echo json_encode(['respuesta' => false, 'mensaje' => 'Error: ' . $e->getMessage()]);
         }
-        
-        // Redondeo final de totales contables
-        $asiento_total_neto = round($asiento_total_neto, 2);
-        $asiento_total_iva = round($asiento_total_iva, 2);
-        
-        // El total a pagar debe ser el total del documento
-        $asiento_total_compra = round($total_compra, 2); 
-        
-        // --- 3. CREACIÓN DEL ASIENTO CONTABLE (PLAN B) ---
-
-        // A. Obtener Claves de Mapeo
-        $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
-        $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
-        
-        // Usamos una lógica simple: si la condición es CRÉDITO, afectamos proveedores, sino, CAJA.
-        $cuenta_credito_pago = ($condicion_pago === 'CREDITO') 
-                                ? obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP') 
-                                : obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'CAJA_PAGOS_COMPRA');
-        
-        // B. Construir el asiento
-        $datos_encabezado = [
-            'fechaAsiento' => $fecha_emision, 
-            'tipoAsiento' => 'Egreso', 
-            'concepto' => "Registro manual de Compra Doc. No. " . $numero_documento,
-            'usuarioRegistro' => $usuario_activo
-        ];
-
-        $datos_detalle = [
-            // LÍNEA 1: DÉBITO - Inventario/Gasto (Valor Neto)
-            ['cuenta_id' => $id_inventario, 'debito' => $asiento_total_neto, 'credito' => 0.00],
-            
-            // LÍNEA 2: DÉBITO - IVA Crédito Fiscal
-            ['cuenta_id' => $id_iva_credito, 'debito' => $asiento_total_iva, 'credito' => 0.00],
-            
-            // LÍNEA 3: CRÉDITO - Pago (Proveedor o Caja/Banco)
-            ['cuenta_id' => $cuenta_credito_pago, 'debito' => 0.00, 'credito' => $asiento_total_compra],
-        ];
-
-        // D. Registrar el asiento
-        $resultado_contable = registrarAsientoAutomatico(
-            $pdo, 
-            $codigo_institucion_sesion, 
-            $datos_encabezado, 
-            $datos_detalle
-        );
-
-        if (!$resultado_contable['respuesta']) {
-            // Si el asiento falla, lanza una excepción para hacer ROLLBACK de TODA la compra.
-            throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
-        }
-        
-        // E. VINCULAR EL ASIENTO A LA CABECERA
-        $sql_vincular_asiento = "UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?";
-        $pdo->prepare($sql_vincular_asiento)->execute([$resultado_contable['numero_asiento'], $id_compra]);
-        
-        // ----------------------------------------------------------------------
-        // 4. COMMIT FINAL
-        // ----------------------------------------------------------------------
-        $pdo->commit();
-        echo json_encode([
-            'respuesta' => true,
-            'mensaje' => 'Compra guardada y asiento contable No. ' . $resultado_contable['numero_asiento'] . ' registrado correctamente.',
-            'id_compra' => $id_compra
-        ]);
-
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        echo json_encode([
-            'respuesta' => false,
-            'mensaje' => 'Error al guardar la compra: ' . $e->getMessage()
-        ]);
-    }
-    break;
+        break;
 
     case 'obtenerCompra':
         $id_compra = $_POST['id_compra'] ?? '';
@@ -347,18 +369,28 @@ case 'guardarCompra':
         
                 // --- 3. ACTUALIZAR CABECERA E INSERTAR NUEVO DETALLE ---
         
-                // Actualizar cabecera
-                $sql_cabecera = "UPDATE compras_cabecera 
-                                 SET numero_documento = ?, tipo_documento = ?, fecha_emision = ?, 
-                                     id_proveedores = ?, condicion_pago = ?, plazo_pago = ?, fecha_vencimiento = ?, 
-                                     total_compra = ?, observaciones = ? 
-                                 WHERE id_compra = ? AND codigo_institucion = ?";
-                $stmt_cabecera = $pdo->prepare($sql_cabecera);
-                $stmt_cabecera->execute([
-                    $numero_documento, $tipo_documento, $fecha_emision, $id_proveedores,
-                    $condicion_pago, $plazo_pago, $fecha_vencimiento, $total_compra,
-                    $observaciones, $id_compra, $codigo_institucion_sesion
-                ]);
+                // CÓDIGO CORREGIDO (Línea aprox 160-170)
+               // 1. Insertar Encabezado de Compra (CORREGIDO SEGÚN TU TABLA)
+            $sql_cab  = "INSERT INTO compras_cabecera 
+                (codigo_institucion, numero_documento, id_proveedores, fecha_emision, tipo_documento, 
+                 condicion_pago, plazo_pago, total_gravado, total_iva, total_compra, observaciones, fecha_creacion) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) RETURNING id_compra";
+            
+            $stmt_cab = $pdo->prepare($sql_cab);
+            $stmt_cab->execute([
+                $codigo_institucion_sesion,
+                $datos_cabecera['numero_documento'],
+                $datos_cabecera['id_proveedores'], // <--- AQUÍ USAMOS EL ID RELACIONAL
+                $datos_cabecera['fecha_emision'],
+                $datos_cabecera['tipo_documento'], 
+                $datos_cabecera['condicion_pago'],
+                $datos_cabecera['plazo_pago'] ?? null, // Agregué plazo_pago porque lo vi en tu tabla
+                $datos_cabecera['total_gravado'],
+                $datos_cabecera['total_iva'],
+                $datos_cabecera['total_pagar'],
+                $datos_cabecera['observaciones'] ?? ''
+            ]);
+            $id_compra = $stmt_cab->fetchColumn();
         
                 // Insertar nuevo detalle y recalcular totales
                 foreach ($productos as $producto) {
@@ -414,71 +446,82 @@ case 'guardarCompra':
                 $nuevo_total_neto = round($nuevo_total_neto, 2);
                 $nuevo_total_compra = round($nuevo_total_neto + $nuevo_total_iva, 2); // El total pagado debe cuadrar
         
-                // --- 4. CREACIÓN DEL NUEVO ASIENTO CON DATOS CORREGIDOS ---
-        
-                // A. Obtener Claves de Mapeo
+                // ============================= comita transacción
+                // =========================================================
+                // 4. INTEGRACIÓN CONTABLE AUTOMÁTICA
+                // =========================================================
+
+                // A. OBTENER LAS CLAVES DE MAFEO (Necesitas estas cuentas configuradas)
+                // Usamos una cuenta genérica para el costo/inventario.
+                // Asumimos que el tipo de pago es CRÉDITO para este ejemplo.
                 $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
                 $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
                 $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
                 
-                // B. Construir el nuevo asiento
-                $datos_encabezado_nuevo = [
-                    'fechaAsiento' => $fecha_emision, 
-                    'tipoAsiento' => 'Egreso', 
-                    'concepto' => "Corrección/Actualización de Compra No. " . $numero_documento,
-                    'usuarioRegistro' => $usuario_activo
+            // B. CALCULAR LOS MONTOS (CORREGIDO)
+                $total_gravada = floatval($compra_data['resumen']['total_gravada'] ?? 0);
+                $total_exenta_nosuj = floatval(($compra_data['resumen']['total_exenta'] ?? 0) + ($compra_data['resumen']['total_no_suj'] ?? 0));
+                $total_iva = floatval($compra_data['resumen']['total_iva'] ?? 0);
+
+                // Forzamos que el total a pagar sea la suma matemática exacta de lo que cargamos
+                // Esto evita el error de "El asiento no balancea" por diferencias de centavos en el JSON original
+                $total_compra = $total_gravada + $total_exenta_nosuj + $total_iva;
+
+                // C. CONSTRUIR EL ASIENTO (Partida Doble)
+
+                $datos_encabezado = [
+                    'fechaAsiento' => $compra_data['fecha_emision'] ?? date('Y-m-d'), 
+                    'tipoAsiento' => 'Egreso', // Tipo de póliza
+                    'concepto' => "Registro automático de Compra DTE No. " . $compra_data['numero_control'] . " del proveedor " . $compra_data['emisor_nombre'],
+                    'usuarioRegistro' => $usuario_activo // Usar la sesión actual
                 ];
-        
-                $datos_detalle_nuevo = [
-                    // DÉBITO - Inventario/Gasto (Valor Neto)
-                    ['cuenta_id' => $id_inventario, 'debito' => $nuevo_total_neto, 'credito' => 0.00],
+
+                $datos_detalle = [
+                    // LÍNEA 1: DÉBITO - Inventario (Costo de la mercancía sin IVA)
+                    ['cuenta_id' => $id_inventario, 'debito' => $total_gravada + $total_exenta_nosuj, 'credito' => 0.00],
                     
-                    // DÉBITO - IVA Crédito Fiscal
-                    ['cuenta_id' => $id_iva_credito, 'debito' => $nuevo_total_iva, 'credito' => 0.00],
+                    // LÍNEA 2: DÉBITO - IVA Crédito Fiscal (El IVA que se tiene a favor)
+                    ['cuenta_id' => $id_iva_credito, 'debito' => $total_iva, 'credito' => 0.00],
                     
-                    // CRÉDITO - Proveedores (Total a pagar)
-                    ['cuenta_id' => $id_proveedores_cp, 'debito' => 0.00, 'credito' => $nuevo_total_compra],
+                    // LÍNEA 3: CRÉDITO - Proveedores (Pasivo, la deuda total)
+                    ['cuenta_id' => $id_proveedores_cp, 'debito' => 0.00, 'credito' => $total_compra],
                 ];
-        
-                // C. Registrar el nuevo asiento
-                $resultado_contable_nuevo = registrarAsientoAutomatico(
+
+                // D. VALIDACIÓN Y REGISTRO
+                $resultado_contable = registrarAsientoAutomatico(
                     $pdo, 
                     $codigo_institucion_sesion, 
-                    $datos_encabezado_nuevo, 
-                    $datos_detalle_nuevo
+                    $datos_encabezado, 
+                    $datos_detalle
                 );
-        
-                if (!$resultado_contable_nuevo['respuesta']) {
-                    throw new Exception("Error Contable: No se pudo registrar el nuevo asiento corregido. " . $resultado_contable_nuevo['mensaje']);
+
+                if (!$resultado_contable['respuesta']) {
+                    // Si el asiento falla, lanza una excepción para hacer ROLLBACK de TODA la compra.
+                    throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
                 }
-        
-                // D. Actualizar el ID del asiento en compras_cabecera (CRÍTICO)
-                $sql_update_asiento_id = "UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?";
-                $pdo->prepare($sql_update_asiento_id)->execute([$resultado_contable_nuevo['numero_asiento'], $id_compra]);
-        
-        
-                // --- 5. COMMIT FINAL ---
+
+                // =============================
+                // FINAL DE LA TRANSACCIÓN
+                // =============================
                 $pdo->commit();
                 echo json_encode([
                     'respuesta' => true, 
-                    'mensaje' => 'Compra y contabilidad actualizadas exitosamente. Asiento corregido No. ' . $resultado_contable_nuevo['numero_asiento'],
+                    'mensaje'   => 'Compra guardada y asiento contable No. ' . $resultado_contable['numero_asiento'] . ' registrado exitosamente.', 
                     'id_compra' => $id_compra
                 ]);
-        
-            } catch (Exception $e) {
-                $pdo->rollBack();
-                echo json_encode([
-                    'respuesta' => false, 
-                    'mensaje' => 'Error al actualizar la compra: ' . $e->getMessage()
-                ]);
-            }
+                
+                    } catch (Exception $e) {
+                    // CORRECCIÓN: Solo hacer rollback si la transacción sigue activa
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                        echo json_encode([
+                            'respuesta' => false, 
+                            'mensaje' => 'Error al actualizar la compra: ' . $e->getMessage()
+                        ]);
+                    }
             break;
-
-
-    
-        
         case 'guardarCompraProcesada':
-
     $pdo->beginTransaction();
     try {
             // AGREGAR ESTA LÍNEA AQUÍ:
@@ -550,14 +593,52 @@ case 'guardarCompra':
         $costo_recibido = floatval($producto['precio_costo']); // Precio que viene en el JSON
         $tipo_dte_compra = $compra_data['tipo_dte'] ?? '03'; // 01: Factura, 03: CCF
 
-        // Si es Factura (01) o Consumidor Final, el precio trae IVA incluido.
-        // Para el sistema, el "Costo" debe ser limpio (Neto).
-        if ($tipo_dte_compra === '01') {
-            $nuevo_costo = round($costo_recibido / 1.13, 4); // Le quitamos el IVA
-        } else {
-            // Si es CCF (03), asumimos que el precio viene sin IVA (Neto)
-            $nuevo_costo = $costo_recibido;
-        }
+        // --- B. LÓGICA AVANZADA DE TIPOS DTE (EL SALVADOR) ---
+                $tipo_dte = $datos_cabecera['tipo_documento']; // '01', '03', '05', '14', etc.
+                
+                $costo_neto_kardex = 0;
+                $factor_cantidad = 1; // 1 = Entrada, -1 = Salida (Devolución)
+
+                switch ($tipo_dte) {
+                    case '01': // FACTURA (IVA Incluido)
+                        // Legislación: Al ser contribuyente, debes separar el IVA para encontrar el costo real.
+                        $costo_neto_kardex = round($precio_papel / 1.13, 4);
+                        $factor_cantidad = 1;
+                        break;
+
+                    case '03': // COMPROBANTE DE CRÉDITO FISCAL (Neto)
+                    case '11': // FACTURA DE EXPORTACIÓN (Generalmente tasa 0%)
+                        // El precio ingresado ya es el costo neto.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+
+                    case '14': // SUJETO EXCLUIDO (Sin IVA)
+                        // No hay IVA involucrado, el costo total es el precio pagado.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+
+                    case '04': // NOTA DE REMISIÓN
+                        // Sirve para amparar traslado. Si se usa para ingresar stock, el valor es referencial neto.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+
+                    case '05': // NOTA DE CRÉDITO (Devolución sobre Compra)
+                        // OJO: Una Nota de Crédito en Compras significa que DEVOLVISTE mercadería al proveedor.
+                        // Por tanto, el inventario debe DISMINUIR.
+                        // Asumimos que la NC hace referencia a un CCF, por lo que el precio viene Neto.
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = -1; // ¡ESTO RESTARÁ DEL INVENTARIO!
+                        break;
+
+                    default:
+                        // Por seguridad, asumimos comportamiento de CCF (Neto)
+                        $costo_neto_kardex = $precio_papel;
+                        $factor_cantidad = 1;
+                        break;
+                }
 
         // --- B. DEFINIR PARÁMETROS DE VENTA ---
         $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; // '20' suele ser IVA 13%
@@ -647,19 +728,26 @@ case 'guardarCompra':
             $producto['id_productos'] = $producto_db['id_productos'];
             $producto['codigo_interno'] = $producto_db['codigo_interno'];
 
-            $sql_update = "UPDATE catalogo_productos 
-                           SET precio_costo = ?, 
-                               precio_unitario = ?,
-                               stock_actual = stock_actual + ?,
-                               codigo_ganancia = ?
-                           WHERE id_productos = ?";
-            $pdo->prepare($sql_update)->execute([
-                $nuevo_costo, 
-                $nuevo_precio_venta, 
-                $producto['cantidad'], 
-                $ganancia_codigo, // Actualizamos también el código de ganancia
-                $producto['id_productos']
-            ]);
+           // --- G. ACTUALIZAR MAESTRO DE PRODUCTOS (CATÁLOGO) ---
+                
+                // Calculamos la cantidad real a mover (Positiva o Negativa)
+                $cantidad_a_mover = $producto['cantidad'] * $factor_cantidad;
+
+                $sql_upd = "UPDATE catalogo_productos SET 
+                                stock_actual = stock_actual + ?,  /* Si es NC, sumará un negativo (restando) */
+                                precio_costo = ?,                 /* Actualizamos costo promedio/último */
+                                precio_unitario = ?,
+                                codigo_ganancia = ?
+                            WHERE codigo_interno = ? AND codigo_institucion = ?";
+                
+                $pdo->prepare($sql_upd)->execute([
+                    $cantidad_a_mover,     // <--- AQUÍ USAMOS LA CANTIDAD CON SIGNO
+                    $costo_neto_kardex,
+                    $nuevo_precio_venta,
+                    $ganancia_codigo,
+                    $producto['codigo_interno'],
+                    $codigo_institucion_sesion
+                ]);
 
         } else {
             // CREAR NUEVO

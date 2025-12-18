@@ -308,7 +308,7 @@ function actualizarTotales() {
         renderizarTabla();
     });
 
-    // Evento para el formulario de registro de compras (Registro Manual)
+   // Evento para el formulario de registro de compras (Registro Manual)
     $('#formCompra').submit(function(e) {
         e.preventDefault();
 
@@ -317,32 +317,68 @@ function actualizarTotales() {
             return;
         }
 
-        const totalFinal = parseFloat($('#totalCompra').text());
-
         let accionDeGuardado = (modoDeGuardado === 'dte') ? 'guardarCompraProcesada' : 'guardarCompra';
         let datosDeEnvio = {};
-        
+
+        // ---------------------------------------------------------
+        // CASO 1: IMPORTACIÓN DE DTE (Automático)
+        // ---------------------------------------------------------
         if (accionDeGuardado === 'guardarCompraProcesada') {
             datosDeEnvio = {
                 accion: accionDeGuardado,
                 compra_data: JSON.stringify(compraEncabezadoDte),
                 productos_data: JSON.stringify(productosCompra)
             };
-        } else {
-            datosDeEnvio = {
-                accion: accionDeGuardado,
+        } 
+        // ---------------------------------------------------------
+        // CASO 2: REGISTRO MANUAL (Aquí estaba el error)
+        // ---------------------------------------------------------
+        else {
+            
+            // 1. Calculamos los totales recorriendo el array de productos
+            let sumGravado = 0;
+            let sumIva = 0;
+            let sumTotal = 0;
+
+            productosCompra.forEach(p => {
+                // Asegúrate de que tu objeto producto tenga 'subtotal' e 'iva' calculado
+                // Si 'precio_costo' ya incluye IVA (Factura), ajusta la lógica aquí si es necesario
+                sumGravado += parseFloat(p.subtotal || 0); 
+                sumIva += parseFloat(p.iva || 0);
+            });
+            sumTotal = sumGravado + sumIva;
+
+            // 2. Construimos el Objeto Cabecera
+            let cabeceraManual = {
                 numero_documento: $('[name="numero_documento"]').val(),
                 tipo_documento: $('[name="tipo_documento"]').val(),
                 fecha_emision: $('[name="fecha_emision"]').val(),
+                
+                // Datos Proveedor
                 id_proveedores: $('#selectProveedor').val(),
+                nombre_proveedor: $('#selectProveedor option:selected').text(), // Obtenemos el texto, no el ID
+                nrc_proveedor: $('#nrc_proveedor').val() || '', // Asegúrate de tener este input, si no, mándalo vacío
+                
                 condicion_pago: $('#selectCondicionPago').val(),
                 plazo_pago: $('#selectPlazoPagoDTE').val(),
-                total_compra: totalFinal.toFixed(2),
                 observaciones: $('[name="observaciones"]').val(),
-                productos: JSON.stringify(productosCompra)
+                
+                // Totales Calculados
+                total_gravado: sumGravado.toFixed(2),
+                total_iva: sumIva.toFixed(2),
+                total_pagar: sumTotal.toFixed(2)
+            };
+
+            // 3. Empaquetamos para enviar al PHP
+            datosDeEnvio = {
+                accion: 'guardarCompra',
+                // El PHP espera estos dos nombres exactos:
+                compra_cabecera: JSON.stringify(cabeceraManual),
+                compra_detalle: JSON.stringify(productosCompra)
             };
         }
 
+        // Envío AJAX
         $.ajax({
             url: 'admin/compras/crud_compras.php',
             type: 'POST',
@@ -351,14 +387,22 @@ function actualizarTotales() {
             success: function(response) {
                 if (response.respuesta) {
                     toastr.success(response.mensaje);
+                    
+                    // Limpieza
                     $('#formCompra')[0].reset();
+                    $('#selectProveedor').val(null).trigger('change'); // Si usas Select2
                     productosCompra = [];
-                    renderizarTabla();
+                    renderizarTabla(); // Limpia la tabla visual
+                    
+                    // Opcional: Recargar para ver los cambios en inventario
+                    setTimeout(() => { location.reload(); }, 1500);
+
                 } else {
                     toastr.error('Error: ' + response.mensaje);
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error(xhr.responseText); // Útil para ver errores de PHP en consola
                 toastr.error('Error al procesar la solicitud.');
             }
         });
