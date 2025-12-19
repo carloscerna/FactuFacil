@@ -79,7 +79,8 @@ function registrarAsientoAutomatico($pdo, $codigo_institucion, $datos_encabezado
 
         // 3. INSERCIÓN DEL DETALLE (DETALLE_ASIENTOS)
         $sql_detalle = "INSERT INTO detalle_asientos (asiento_id, cuenta_id, debito, credito) VALUES (:asiento_id, :cuenta_id, :debito, :credito)";
-        $stmt_detalle = $pdo->prepare($sql_detalle);
+        $stmt_detalle = $pdo->prepare($sql_detalle);     
+
 
         foreach ($datos_detalle as $linea) {
             $stmt_detalle->execute([

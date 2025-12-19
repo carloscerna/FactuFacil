@@ -166,6 +166,25 @@ case 'guardarCompra':
                        break;
                 }
 
+                // --- C. DETECCIÓN INTELIGENTE DE IMPUESTO (Nuevo en Manual) ---
+                // Si escribiste dinero en la columna de Exento, el producto debe ser Exento.
+                $impuesto_codigo = $producto['impuesto_aplicable'] ?? '20'; // Valor que venía del JS (puede ser del catálogo o default)
+                
+                // Leemos los montos que ingresaste manualmente en la tabla
+                $monto_exento_manual = floatval($producto['ventas_exentas'] ?? 0);
+                $monto_nosuj_manual  = floatval($producto['ventas_no_sujetas'] ?? 0);
+
+                if ($monto_exento_manual > 0 || $monto_nosuj_manual > 0) {
+                    // Si hay dinero en estas columnas, forzamos el código de "Sin Impuesto"
+                    $impuesto_codigo = '00'; 
+                }
+
+                // Obtener info del impuesto final
+                $sql_imp = "SELECT porcentaje, tipo_impuesto, monto_fijo FROM cat_015 WHERE codigo = ?";
+                $stmt_imp = $pdo->prepare($sql_imp);
+                $stmt_imp->execute([$impuesto_codigo]);
+                $info_imp = $stmt_imp->fetch(PDO::FETCH_ASSOC);
+
                 // --- C. BUSCAR/FORZAR GANANCIA ---
                 $ganancia_codigo = $producto['codigo_ganancia'] ?? ''; 
                 
@@ -215,54 +234,144 @@ case 'guardarCompra':
                 $precio_base_con_impuestos = ($costo_neto_kardex * $factor_impuesto) + $monto_impuesto_fijo;
                 $nuevo_precio_venta = round($precio_base_con_impuestos * $factor_ganancia, 4);
 
-                // --- F. GUARDAR HISTÓRICO DE COMPRA ---
-                // Guardamos tanto el costo neto (real) como el precio papel (referencia)
+                // --- F. GESTIÓN DE CATÁLOGO (Crear si no existe / Actualizar si existe) ---
+                
+                // Verificar existencia
+                $sql_find = "SELECT id_productos, codigo_interno FROM catalogo_productos WHERE codigo_interno = ? AND codigo_institucion = ?";
+                $stmt_find = $pdo->prepare($sql_find);
+                $stmt_find->execute([$producto['codigo_interno'], $codigo_institucion_sesion]);
+                $producto_db = $stmt_find->fetch(PDO::FETCH_ASSOC);
+
+                if ($producto_db) {
+                    // ACTUALIZAR (Lógica existente)
+                    $cantidad_a_mover = $cantidad_input * $factor_cantidad;
+                    $sql_upd = "UPDATE catalogo_productos SET 
+                                    stock_actual = stock_actual + ?, 
+                                    precio_costo = ?, 
+                                    precio_unitario = ?,
+                                    codigo_ganancia = ?
+                                WHERE codigo_interno = ? AND codigo_institucion = ?";
+                    $pdo->prepare($sql_upd)->execute([
+                        $cantidad_a_mover, $costo_neto_kardex, $nuevo_precio_venta, $ganancia_codigo,
+                        $producto['codigo_interno'], $codigo_institucion_sesion
+                    ]);
+                } else {
+                    // CREAR NUEVO (Lógica agregada para robustez)
+                    // Si escribiste un código manual que no existe, lo creamos.
+                    $sql_insert = "INSERT INTO catalogo_productos (
+                        codigo_interno, codigo_institucion, codigo_categoria,
+                        descripcion, precio_costo, precio_unitario, impuesto_aplicable, unidad_medida,
+                        codigo_proveedor, stock_actual, fecha_vencimiento, codigo_ganancia
+                    ) VALUES (?, ?, 'CAT008', ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id_productos"; // CAT008 por defecto si es manual puro
+
+                    $stmt_ins = $pdo->prepare($sql_insert);
+                    $stmt_ins->execute([
+                        $producto['codigo_interno'], // Usamos el código que escribiste
+                        $codigo_institucion_sesion,
+                        $producto['descripcion'],
+                        $costo_neto_kardex,
+                        $nuevo_precio_venta,
+                        $impuesto_codigo,
+                        $producto['unidad_medida'] ?? '59', // Unidad por defecto
+                        $producto['codigo_proveedor'] ?? $producto['codigo_interno'],
+                        $cantidad_input,
+                        null, // fecha vencimiento
+                        $ganancia_codigo
+                    ]);
+                }
+
+                // --- G. INSERTAR DETALLE ---
                 $sql_det = "INSERT INTO compras_detalle 
-                    (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?)";
+                    (id_compra, codigo_producto, cantidad, precio_costo, precio_unitario, subtotal, iva, descuento, ventas_no_suj, ventas_exenta, ventas_gravada) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 
                 $stmt_det = $pdo->prepare($sql_det);
                 $stmt_det->execute([
                     $id_compra,
                     $producto['codigo_interno'],
-                    $cantidad_input, // Guardamos positivo en el historial visual
-                    $costo_neto_kardex, // Costo REAL limpio
-                    $precio_papel,      // Lo que escribiste (puede llevar IVA)
-                    $producto['subtotal'] ?? ($precio_papel * $cantidad_input),
-                    $producto['iva'] ?? 0
-                ]);
-
-                // --- G. ACTUALIZAR INVENTARIO (KARDEX) ---
-                
-                // Aquí aplicamos el FACTOR CANTIDAD (1 o -1)
-                $cantidad_a_mover = $cantidad_input * $factor_cantidad;
-
-                $sql_upd = "UPDATE catalogo_productos SET 
-                                stock_actual = stock_actual + ?, /* Suma o Resta según tipo doc */
-                                precio_costo = ?,                /* Actualiza costo promedio/último */
-                                precio_unitario = ?,             /* Actualiza Precio Venta */
-                                codigo_ganancia = ?
-                            WHERE codigo_interno = ? AND codigo_institucion = ?";
-                
-                $pdo->prepare($sql_upd)->execute([
-                    $cantidad_a_mover, 
-                    $costo_neto_kardex,
-                    $nuevo_precio_venta,
-                    $ganancia_codigo,
-                    $producto['codigo_interno'],
-                    $codigo_institucion_sesion
+                    $cantidad_input,
+                    $costo_neto_kardex, 
+                    $precio_papel,
+                    $producto['subtotal'] ?? 0,
+                    $producto['iva'] ?? 0,
+                    $producto['descuento'] ?? 0,
+                    $producto['ventas_no_sujetas'] ?? 0, // Usamos nombres del JS manual
+                    $producto['ventas_exentas'] ?? 0,
+                    $producto['ventas_gravadas'] ?? 0
                 ]);
             }
 
-            // 3. Registrar Asiento Contable (Igual que antes)
-            // ... (Copia aquí tu lógica de registrarAsientoAutomatico si la tienes en este case) ...
-            // NOTA: Si en el manual no generas asiento, puedes omitirlo, pero idealmente debería ir.
+           // =========================================================
+            // 3. INTEGRACIÓN CONTABLE AUTOMÁTICA (COMPRA MANUAL)
+            // =========================================================
+
+            // A. OBTENER CUENTAS CONTABLES (Mapeo)
+            // Asegúrate de tener estos códigos configurados en tu sistema
+            $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
+            $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
+            $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+
+            // B. PREPARAR TOTALES (Vienen calculados desde el JS en datos_cabecera)
+            $total_gravado = floatval($datos_cabecera['total_gravado']);
+            $total_iva     = floatval($datos_cabecera['total_iva']);
+            $total_pagar   = floatval($datos_cabecera['total_pagar']);
+
+            // C. DEFINIR ENCABEZADO DEL ASIENTO
+            $datos_encabezado_asiento = [
+                'fechaAsiento'    => $datos_cabecera['fecha_emision'],
+                'tipoAsiento'     => 'Egreso', // O 'Diario' según tu lógica
+                'concepto'        => "Registro de Compra Manual Doc. " . $datos_cabecera['numero_documento'] . " - " . ($datos_cabecera['nombre_proveedor'] ?? 'Proveedor Varios'),
+                'usuarioRegistro' => $_SESSION['userNombre']
+            ];
+
+            // D. DEFINIR DETALLE (PARTIDA DOBLE)
+            $datos_detalle_asiento = [
+                // 1. CARGO: Inventario (Entrada de Mercancía - Valor Neto)
+                [
+                    'cuenta_id' => $id_inventario, 
+                    'debito'    => $total_gravado, 
+                    'credito'   => 0.00
+                ],
+                // 2. CARGO: IVA Crédito Fiscal (Impuesto a favor)
+                [
+                    'cuenta_id' => $id_iva_credito, 
+                    'debito'    => $total_iva, 
+                    'credito'   => 0.00
+                ],
+                // 3. ABONO: Cuentas por Pagar (Deuda al Proveedor)
+                [
+                    'cuenta_id' => $id_proveedores_cp, 
+                    'debito'    => 0.00, 
+                    'credito'   => $total_pagar
+                ]
+            ];
+
+            // E. REGISTRAR ASIENTO
+            $resultado_contable = registrarAsientoAutomatico(
+                $pdo, 
+                $codigo_institucion_sesion, 
+                $datos_encabezado_asiento, 
+                $datos_detalle_asiento
+            );
+
+            // Validar éxito del asiento
+            if ($resultado_contable['respuesta']) {
+                // Si se creó, actualizamos la compra con el ID del asiento generado
+                $sql_link_asiento = "UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?";
+                $pdo->prepare($sql_link_asiento)->execute([$resultado_contable['numero_asiento'], $id_compra]);
+            } else {
+                // Opcional: Si es crítico que exista contabilidad, descomenta la siguiente línea para revertir todo si falla el asiento
+                // throw new Exception("Error al generar asiento contable: " . $resultado_contable['mensaje']);
+            }
 
             $pdo->commit();
             echo json_encode(['respuesta' => true, 'mensaje' => 'Compra manual registrada y precios actualizados.']);
 
         } catch (Exception $e) {
-            $pdo->rollBack();
+            // CORRECCIÓN: Solo hacer rollback si la transacción sigue activa
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             error_log("Error en guardarCompra Manual: " . $e->getMessage());
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error: ' . $e->getMessage()]);
         }
@@ -567,9 +676,21 @@ case 'guardarCompra':
 
       // 3. Procesar productos
         foreach ($productos_data as $producto) {
-            if (empty($producto['codigo_proveedor'])) {
-                throw new Exception("Producto sin código de proveedor: " . ($producto['descripcion'] ?? 'Sin descripción'));
+// ============================================================
+            // 1. VALIDACIÓN Y AUTO-GENERACIÓN DE CÓDIGO (Si viene NULL)
+            // ============================================================
+            if (empty($producto['codigo_proveedor']) || $producto['codigo_proveedor'] === 'null') {
+                // Generamos un código genérico basado en la descripción.
+                // Usamos MD5 para que si vuelves a comprar el mismo producto "sin código" 
+                // con la misma descripción exacta, el sistema intente reconocerlo en lugar de crear duplicados.
+                
+                $descripcion_limpia = trim($producto['descripcion'] ?? 'SIN_NOMBRE');
+                $hash_desc = strtoupper(substr(md5($descripcion_limpia), 0, 6)); // Ej: A1B2C3
+                
+                // Asignamos el código generado
+                $producto['codigo_proveedor'] = "GEN-" . $hash_desc;
             }
+            // ============================================================
 
         // --- A. LÓGICA DE COSTO NETO (Detectar si viene con IVA) ---
         $precio_papel = floatval($producto['precio_costo']); // Precio que viene en el JSON
@@ -789,59 +910,92 @@ case 'guardarCompra':
             // asegúrate que use la columna correcta si decides descomentarlo.
         }
 
-        // ============================= comita transacción
-          // =========================================================
-        // 4. INTEGRACIÓN CONTABLE AUTOMÁTICA
-        // =========================================================
+       // =========================================================
+            // 4. INTEGRACIÓN CONTABLE AUTOMÁTICA (CORREGIDA)
+            // =========================================================
 
-        // A. OBTENER LAS CLAVES DE MAFEO (Necesitas estas cuentas configuradas)
-        // Usamos una cuenta genérica para el costo/inventario.
-        // Asumimos que el tipo de pago es CRÉDITO para este ejemplo.
-        $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
-        $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
-        $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
-        
-       // B. CALCULAR LOS MONTOS (CORREGIDO)
-        $total_gravada = floatval($compra_data['resumen']['total_gravada'] ?? 0);
-        $total_exenta_nosuj = floatval(($compra_data['resumen']['total_exenta'] ?? 0) + ($compra_data['resumen']['total_no_suj'] ?? 0));
-        $total_iva = floatval($compra_data['resumen']['total_iva'] ?? 0);
-
-        // Forzamos que el total a pagar sea la suma matemática exacta de lo que cargamos
-        // Esto evita el error de "El asiento no balancea" por diferencias de centavos en el JSON original
-        $total_compra = $total_gravada + $total_exenta_nosuj + $total_iva;
-
-        // C. CONSTRUIR EL ASIENTO (Partida Doble)
-
-        $datos_encabezado = [
-            'fechaAsiento' => $compra_data['fecha_emision'] ?? date('Y-m-d'), 
-            'tipoAsiento' => 'Egreso', // Tipo de póliza
-            'concepto' => "Registro automático de Compra DTE No. " . $compra_data['numero_control'] . " del proveedor " . $compra_data['emisor_nombre'],
-            'usuarioRegistro' => $usuario_activo // Usar la sesión actual
-        ];
-
-        $datos_detalle = [
-            // LÍNEA 1: DÉBITO - Inventario (Costo de la mercancía sin IVA)
-            ['cuenta_id' => $id_inventario, 'debito' => $total_gravada + $total_exenta_nosuj, 'credito' => 0.00],
+            // A. OBTENER CUENTAS
+            $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
+            $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
+            $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
             
-            // LÍNEA 2: DÉBITO - IVA Crédito Fiscal (El IVA que se tiene a favor)
-            ['cuenta_id' => $id_iva_credito, 'debito' => $total_iva, 'credito' => 0.00],
+            // B. OBTENER VALORES DEL JSON
+            // Nota: En DTE Factura (01), 'totalGravada' suele ser el valor CON IVA incluido.
+            // En DTE CCF (03), 'totalGravada' suele ser el valor NETO.
+            $json_gravada = floatval($compra_data['resumen']['total_gravada'] ?? 0);
+            $json_iva     = floatval($compra_data['resumen']['total_iva'] ?? 0);
+            $json_total   = floatval($compra_data['resumen']['total_pagar'] ?? 0);
+            $json_exenta  = floatval($compra_data['resumen']['total_exenta'] ?? 0);
+            $json_nosuj   = floatval($compra_data['resumen']['total_no_suj'] ?? 0);
+
+            // C. DETERMINAR MONTOS PARA EL ASIENTO SEGÚN TIPO DOCUMENTO
+            $tipo_dte = $compra_data['tipo_dte'] ?? '03';
             
-            // LÍNEA 3: CRÉDITO - Proveedores (Pasivo, la deuda total)
-            ['cuenta_id' => $id_proveedores_cp, 'debito' => 0.00, 'credito' => $total_compra],
-        ];
+            $monto_inventario = 0;
+            $monto_iva        = $json_iva;
+            $monto_proveedor  = $json_total; // Lo que realmente se paga
 
-        // D. VALIDACIÓN Y REGISTRO
-        $resultado_contable = registrarAsientoAutomatico(
-            $pdo, 
-            $codigo_institucion_sesion, 
-            $datos_encabezado, 
-            $datos_detalle
-        );
+            if ($tipo_dte === '01') {
+                // CASO FACTURA: El total a pagar ($6.00) incluye IVA.
+                // Inventario = Total Pagar - IVA - Exentas/NoSujetas
+                // Ejemplo: $6.00 - $0.69 = $5.31 (Costo Neto)
+                // (Asumiendo que json_gravada trae el bruto)
+                $monto_inventario = $json_gravada - $json_iva; 
+                
+                // Ajuste de seguridad: Si hay exentas, se suman directo al inventario
+                $monto_inventario += ($json_exenta + $json_nosuj);
 
-        if (!$resultado_contable['respuesta']) {
-            // Si el asiento falla, lanza una excepción para hacer ROLLBACK de TODA la compra.
-            throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
-        }
+            } else {
+                // CASO CCF (03) y OTROS: El total gravado es Neto.
+                // Inventario = Total Gravado + Exentas + No Sujetas
+                $monto_inventario = $json_gravada + $json_exenta + $json_nosuj;
+            }
+
+            // D. CONSTRUIR ENCABEZADO
+            $datos_encabezado = [
+                'fechaAsiento'    => $compra_data['fecha_emision'] ?? date('Y-m-d'), 
+                'tipoAsiento'     => 'Egreso', 
+                'concepto'        => "Registro automático de Compra DTE No. " . $compra_data['numero_control'] . " del proveedor " . $compra_data['emisor_nombre'],
+                'usuarioRegistro' => $usuario_activo
+            ];
+
+            // E. CONSTRUIR DETALLE (Partida Doble)
+            $datos_detalle_asiento = [
+                // 1. DÉBITO: Inventario (Costo Neto)
+                [
+                    'cuenta_id' => $id_inventario, 
+                    'debito'    => $monto_inventario, 
+                    'credito'   => 0.00
+                ],
+                
+                // 2. DÉBITO: IVA (Impuesto)
+                [
+                    'cuenta_id' => $id_iva_credito, 
+                    'debito'    => $monto_iva, 
+                    'credito'   => 0.00
+                ],
+                
+                // 3. CRÉDITO: Proveedor (Total a Pagar)
+                [
+                    'cuenta_id' => $id_proveedores_cp, 
+                    'debito'    => 0.00, 
+                    'credito'   => $monto_proveedor
+                ],
+            ];
+
+            // F. REGISTRAR
+            $resultado_contable = registrarAsientoAutomatico(
+                $pdo, 
+                $codigo_institucion_sesion, 
+                $datos_encabezado, 
+                $datos_detalle_asiento
+            );
+
+            if ($resultado_contable['respuesta']) {
+                $pdo->prepare("UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?")->execute([$resultado_contable['numero_asiento'], $id_compra]);
+            } else {
+                throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
+            }
 
         // =============================
         // FINAL DE LA TRANSACCIÓN
@@ -1256,48 +1410,71 @@ case 'guardarCompra':
               // =============================
                 //  MAPEO DETALLE (productos) CON AUTO-GENERACIÓN DE CÓDIGO
                 // =============================
+               // =============================
+                //  MAPEO DETALLE CON DETECCION FISCAL INTELIGENTE
+                // =============================
                 $productos = [];
-                $contador_sin_codigo = 1; // Para generar códigos únicos en esta carga
+                $contador_sin_codigo = 1;
 
                 foreach ($mapeo['productos_dte'] as $item) {
                     $codigo_proveedor_producto = $item['codigo'] ?? null;
                     $descripcion_producto      = $item['descripcion'] ?? null;
         
-                    // --- CORRECCIÓN: Si viene sin código, asignar uno genérico ---
-                    if (empty($codigo_proveedor_producto)) {
-                        // Generamos un código temporal: "SIN-COD-" + un hash corto de la descripción + contador
-                        $hash_desc = strtoupper(substr(md5($descripcion_producto), 0, 4));
-                        $codigo_proveedor_producto = "GEN-" . $hash_desc . "-" . $contador_sin_codigo;
-                        $contador_sin_codigo++;
+                    // 1. GENERAR CÓDIGO SI FALTA
+                    if (empty($codigo_proveedor_producto) || $codigo_proveedor_producto === 'null') {
+                        $descripcion_limpia = trim($descripcion_producto ?? 'SIN_NOMBRE');
+                        $hash_desc = strtoupper(substr(md5($descripcion_limpia), 0, 6)); 
+                        $codigo_proveedor_producto = "GEN-" . $hash_desc;
                     }
-                    // ------------------------------------------------------------
 
                     // Buscar producto en catálogo interno
                     $sql_find_product = "SELECT id_productos, codigo_interno, impuesto_aplicable, codigo_ganancia, precio_costo, unidad_medida 
                                             FROM catalogo_productos 
                                             WHERE codigo_interno = ? AND codigo_institucion = ?";
-                    // Nota: Aquí buscamos por codigo_interno que a veces coincide, pero idealmente deberías buscar por codigo_proveedor también
-                    // Si tu lógica es buscar por codigo_proveedor, ajusta la consulta SQL aquí.
-                    
                     $stmt_find_product = $pdo->prepare($sql_find_product);
                     $stmt_find_product->execute([$codigo_proveedor_producto, $codigo_institucion_sesion]);
                     $producto_db = $stmt_find_product->fetch(PDO::FETCH_ASSOC);
         
+                    // -------------------------------------------------------------
+                    // 2. DETECCIÓN DE ESTATUS FISCAL (EXENTO / NO SUJETO / GRAVADO)
+                    // -------------------------------------------------------------
+                    // Analizamos dónde viene el dinero en el JSON para determinar el impuesto por defecto
+                    $codigo_impuesto_detectado = '20'; // Por defecto asumimos Gravado (IVA 13%)
+
+                    $monto_exento = floatval($item['ventaExenta'] ?? 0);
+                    $monto_nosuj  = floatval($item['ventaNoSuj'] ?? 0);
+                    
+                    if ($monto_exento > 0) {
+                        // Si trae valor en Exento, asignamos código '00' o el que uses para "Sin Impuesto"
+                        $codigo_impuesto_detectado = '00'; 
+                    } elseif ($monto_nosuj > 0) {
+                        // Si trae valor en No Sujeto
+                        $codigo_impuesto_detectado = '00'; 
+                    }
+                    
+                    // Si el producto YA EXISTE en BD, respetamos su config. 
+                    // Si NO EXISTE, usamos lo que detectamos en el JSON.
+                    $impuesto_final = $producto_db['impuesto_aplicable'] ?? $codigo_impuesto_detectado;
+                    // -------------------------------------------------------------
+
                     $producto_mapeado = [
                         'id_productos'       => $producto_db['id_productos'] ?? null,
                         'codigo_interno'     => $producto_db['codigo_interno'] ?? null,
-                        'codigo_proveedor'   => $codigo_proveedor_producto, // Aquí ya va lleno sí o sí
+                        'codigo_proveedor'   => $codigo_proveedor_producto,
                         'descripcion'        => $descripcion_producto,
                         'cantidad'           => $item['cantidad'] ?? 0,
-                        'precio_unitario'    => $item['precioUni'] ?? 0,
-                        'precio_costo'       => $item['precioUni'] ?? 0,
+                        'precio_unitario'    => $item['precioUni'] ?? 0, // Precio DTE
+                        'precio_costo'       => $item['precioUni'] ?? 0, // Costo base
                         'iva'                => $item['ivaItem'] ?? 0,
                         'descuento'          => $item['montoDescu'] ?? 0,
                         'venta_gravada'      => $item['ventaGravada'] ?? 0,
                         'venta_exenta'       => $item['ventaExenta'] ?? 0,
                         'venta_no_suj'       => $item['ventaNoSuj'] ?? 0,
                         'unidad_medida'      => $producto_db['unidad_medida'] ?? ($item['uniMedida'] ?? null),
-                        'impuesto_aplicable' => $producto_db['impuesto_aplicable'] ?? null,
+                        
+                        // Aquí aplicamos el impuesto detectado
+                        'impuesto_aplicable' => $impuesto_final,
+                        
                         'en_catalogo'        => $producto_db ? true : false
                     ];
                     $productos[] = $producto_mapeado;

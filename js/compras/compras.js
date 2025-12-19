@@ -274,61 +274,127 @@ $('#btnDte').on('click', function() {
         recalcularFila(index);
     });
 
+// Función auxiliar para actualizar la fila, redistribuir montos y actualizar totales
+    function recalcularFila(index) {
+        let prod = productosCompra[index];
+        
+        // 1. Calcular el nuevo subtotal matemático
+        let nuevoTotalLinea = (prod.cantidad * parseFloat(prod.precio_unitario));
+        
+        // Aplica descuento si existe
+        let subtotalFinal = nuevoTotalLinea - (parseFloat(prod.descuento) || 0);
 
-// Función auxiliar para actualizar solo la fila y los totales
-function recalcularFila(index) {
-    let prod = productosCompra[index];
-    let subtotal = (prod.cantidad * parseFloat(prod.precio_unitario)) - (prod.descuento || 0);
-    
-    // Guardamos el dato
-    productosCompra[index].subtotal = subtotal.toFixed(4);
+        // 2. Redistribuir el monto en la categoría correcta (Gravado, Exento o No Sujeto)
+        // Verificamos dónde estaba el valor originalmente para actualizar esa misma columna
+        
+        // Convertimos a float para comparar
+        let esNoSujeta = parseFloat(prod.ventas_no_sujetas || 0) > 0;
+        let esExenta = parseFloat(prod.ventas_exentas || 0) > 0;
+        
+        // Reseteamos todos a 0 para asignar el nuevo valor limpio
+        prod.ventas_no_sujetas = 0;
+        prod.ventas_exentas = 0;
+        prod.ventas_gravadas = 0;
 
-    // Actualizamos SOLO la celda del subtotal en la tabla (la columna 10 u 11 según tu HTML)
-    // Buscamos la fila correspondiente y la celda del subtotal
-    let fila = $(`#tablaProductosCompra tbody tr`).eq(index);
-    fila.find('td:last').prev().text(subtotal.toFixed(4)); 
-
-    // Actualizar totales globales
-    actualizarTotales();
-}
-
-
-// ✅ Totales
-function actualizarTotales() {
-    let totalNoSuj = 0;
-    let totalExenta = 0;
-    let totalGravada = 0;
-    let totalIva = 0;
-    let totalDescuento = 0;
-    let totalFinal = 0;
-
-    productosCompra.forEach((p) => {
-        const subtotal = (p.cantidad * p.precio_unitario) - (p.descuento || 0);
-
-        totalNoSuj += parseFloat(p.venta_no_suj || 0);
-        totalExenta += parseFloat(p.venta_exenta || 0);
-        totalGravada += parseFloat(p.venta_gravada || 0);
-
-        // calcular IVA si corresponde
-        if (p.impuesto_aplicable && p.impuesto_aplicable !== '00') {
-            if (p.impuesto_descripcion && p.impuesto_descripcion.includes('%')) {
-                let porcentaje = parseFloat(p.impuesto_descripcion.replace(/[^0-9.]/g, '')) || 0;
-                totalIva += subtotal * (porcentaje / 100);
-            }
+        if (esNoSujeta) {
+            prod.ventas_no_sujetas = subtotalFinal.toFixed(4);
+        } else if (esExenta) {
+            prod.ventas_exentas = subtotalFinal.toFixed(4);
+        } else {
+            // Por defecto, si no es ni exenta ni no sujeta, cae en GRAVADA
+            prod.ventas_gravadas = subtotalFinal.toFixed(4);
         }
 
-        totalDescuento += parseFloat(p.descuento || 0);
-        totalFinal += subtotal;
-    });
+        // Guardamos el subtotal general visual
+        prod.subtotal = subtotalFinal.toFixed(4);
 
-    $('#totalNoSuj').text(totalNoSuj.toFixed(2));
-    $('#totalExenta').text(totalExenta.toFixed(2));
-    $('#totalGravada').text(totalGravada.toFixed(2));
-    $('#totalIva').text(totalIva.toFixed(2));
-    $('#totalDescuento').text(totalDescuento.toFixed(2));
-    $('#totalFinal').text(totalFinal.toFixed(2));
-}
+        // 3. ACTUALIZAR EL DOM (TABLA VISUAL)
+        // Buscamos la fila correspondiente
+        let fila = $(`#tablaProductosCompra tbody tr`).eq(index);
 
+        // Actualizamos las celdas específicas según el orden de tu HTML:
+        // Col 7: No Sujetas | Col 8: Exentas | Col 9: Gravadas | Col 10: Subtotal
+        // Nota: eq(index) empieza en 0. Revisa si tus indices coinciden. 
+        // Según tu HTML anterior:
+        // 0:CodInterno, 1:CodProv, 2:Cant, 3:Unidad, 4:Descrip, 5:Precio, 6:Desc, 7:NoSuj, 8:Exenta, 9:Grav, 10:Subt
+        
+        fila.find('td').eq(7).text(parseFloat(prod.ventas_no_sujetas).toFixed(4));
+        fila.find('td').eq(8).text(parseFloat(prod.ventas_exentas).toFixed(4));
+        fila.find('td').eq(9).text(parseFloat(prod.ventas_gravadas).toFixed(4));
+        fila.find('td').eq(10).text(parseFloat(prod.subtotal).toFixed(4));
+
+        // 4. Recalcular los totales del pie de página
+        actualizarTotales();
+    }
+// ✅ Totales Actualizados (Versión Final corregida)
+    function actualizarTotales() {
+        console.clear(); 
+        console.log("--- ACTUALIZANDO TOTALES ---");
+
+        let totalNoSuj = 0;
+        let totalExenta = 0;
+        let totalGravada = 0;
+        let totalIva = 0;
+        let totalDescuento = 0;
+        let totalFinal = 0;
+
+        let tipoDoc = $('[name="tipo_documento"]').val(); 
+        if (!tipoDoc) tipoDoc = '03'; // Default CCF
+
+        productosCompra.forEach((p, index) => {
+            let gravadaLinea = parseFloat(p.ventas_gravadas || p.venta_gravada || 0);
+            let exentaLinea = parseFloat(p.ventas_exentas || p.venta_exenta || 0);
+            let noSujetaLinea = parseFloat(p.ventas_no_sujetas || p.venta_no_suj || 0);
+            let descuentoLinea = parseFloat(p.descuento || 0);
+
+            // Sumar a acumuladores base
+            totalGravada += gravadaLinea;
+            totalExenta += exentaLinea;
+            totalNoSuj += noSujetaLinea;
+            totalDescuento += descuentoLinea;
+
+            // --- CORRECCIÓN: Detectar impuesto o usar Default ---
+            // Si p.impuesto_aplicable es null, undefined o "null" (texto), usamos '20'
+            let codImpuesto = p.impuesto_aplicable;
+            if (!codImpuesto || codImpuesto === 'null') {
+                codImpuesto = '20'; 
+                // Actualizamos el objeto en memoria para futuras ediciones
+                productosCompra[index].impuesto_aplicable = '20'; 
+            }
+
+            // --- CÁLCULO DE IVA ---
+            if (gravadaLinea > 0 && String(codImpuesto) === '20') {
+                
+                if (tipoDoc === '01') { // FACTURA
+                    // Desglosamos IVA (El total ya lo incluye)
+                    let base = gravadaLinea / 1.13;
+                    let ivaItem = gravadaLinea - base;
+                    totalIva += ivaItem;
+                    totalFinal += gravadaLinea; 
+                } else { // CCF
+                    // Sumamos IVA (El total es Neto + IVA)
+                    let ivaItem = gravadaLinea * 0.13;
+                    totalIva += ivaItem;
+                    totalFinal += (gravadaLinea + ivaItem);
+                }
+            } else {
+                // Si es Exento o No Sujeto
+                totalFinal += gravadaLinea;
+            }
+            
+            totalFinal += (exentaLinea + noSujetaLinea);
+        });
+
+        // Actualizar HTML
+        $('#totalNoSuj').text(totalNoSuj.toFixed(2));
+        $('#totalExenta').text(totalExenta.toFixed(2));
+        $('#totalGravada').text(totalGravada.toFixed(2));
+        $('#totalIva').text(totalIva.toFixed(2));
+        $('#totalDescuento').text(totalDescuento.toFixed(2));
+        $('#totalFinal').text(totalFinal.toFixed(2));
+        
+        console.log("Calculo finalizado. IVA:", totalIva.toFixed(2));
+    }
 
 
 
@@ -544,25 +610,59 @@ function actualizarTotales() {
         $('#tablaBusquedaProductos_filter input').focus();
     });
 
+    // =======================================================
+    //  CORRECCIÓN: EVENTO SELECCIONAR DESDE EL MODAL
+    // =======================================================
     $('#tablaBusquedaProductos tbody').on('click', '.btnSeleccionarProductoModal', function() {
         const data = tablaBusquedaProductosDT.row($(this).parents('tr')).data();
 
+        // 1. Preparar valores iniciales (Cálculo a 4 decimales)
+        const cantidad = 1; // Por defecto agrega 1 unidad al seleccionar
+        const precioUnitario = parseFloat(data.precio_unitario_final) || 0; // Este precio ya trae cálculos del backend
+        const subtotal = cantidad * precioUnitario;
+        
+        // Aseguramos que venga un código de impuesto, si no, default '20'
+        const impuestoAplicable = data.impuesto_aplicable || '20'; 
+
+        // 2. Construir el objeto del producto
         const producto = {
             id_productos: data.id_productos,
             codigo_interno: data.codigo_interno,
             codigo_proveedor: data.codigo_proveedor,
             descripcion: data.descripcion,
-            cantidad: 1,
-            precio_unitario: parseFloat(data.precio_unitario_final).toFixed(4), // ✅ ya con 4 decimales
-            impuesto_aplicable: data.impuesto_aplicable,
+            cantidad: cantidad,
+            precio_unitario: precioUnitario.toFixed(4),
+            impuesto_aplicable: impuestoAplicable,
             impuesto_descripcion: data.impuesto_descripcion,
             codigo_ganancia: data.codigo_ganancia,
-            subtotal: parseFloat(data.subtotal).toFixed(4) // ✅ 4 decimales
+            subtotal: subtotal.toFixed(4),
+            descuento: 0,
+            
+            // Inicializamos en 0 para evitar undefined
+            ventas_no_sujetas: 0,
+            ventas_exentas: 0,
+            ventas_gravadas: 0
         };
 
+        // 3. LÓGICA DE DISTRIBUCIÓN FISCAL (Igual que en el botón manual)
+        // Decidimos en qué columna poner el dinero según el impuesto
+        if (impuestoAplicable === '20') {
+            producto.ventas_gravadas = subtotal.toFixed(4);
+        } else if (impuestoAplicable === '00' || impuestoAplicable === '04') { 
+            // Agrega aquí los códigos que uses para Exento (ej: '04')
+            producto.ventas_exentas = subtotal.toFixed(4);
+        } else {
+            // Fallback: Si es otro código, asumimos Gravado por seguridad
+            producto.ventas_gravadas = subtotal.toFixed(4);
+        }
+
+        // 4. Agregar al array y actualizar vista
         productosCompra.push(producto);
-        renderizarTabla();
+        renderizarTabla(); // Esto actualiza los totales y el HTML
+        
+        // Cerrar modal y notificar
         $('#buscarProductoModal').modal('hide');
+        toastr.success('Producto agregado correctamente.');
     });
 
 
@@ -712,11 +812,12 @@ $('#formSubirDte').submit(function(e) {
         }
     });
 }
-
-$('#btnAgregarProducto').on('click', async function() {
+// ✅ CORRECCIÓN: Botón Agregar Producto Manual
+    // Ahora distribuye el monto correctamente al instante (Gravado/Exento)
+    $('#btnAgregarProducto').on('click', async function() {
         const id = $('#codigoProducto').val();
         const descripcion = $('#descripcionProducto').val();
-        const impuestoAplicable = $('#impuestoAplicableProducto').val();
+        const impuestoAplicable = $('#impuestoAplicableProducto').val() || '20'; // Default '20'
         const codigoGanancia = $('#codigoGananciaProducto').val();
         const cantidad = parseFloat($('#cantidadProducto').val()) || 0;
         const precioUnitario = parseFloat($('#precioUnitarioProducto').val()) || 0;
@@ -726,22 +827,52 @@ $('#btnAgregarProducto').on('click', async function() {
             return;
         }
 
-        const subtotal = cantidad * precioUnitario;
+        // 1. Cálculos iniciales (4 decimales)
+        const subtotal = (cantidad * precioUnitario);
         const impuestoInfo = await obtenerDetalleImpuesto(impuestoAplicable);
         
+        // 2. Construir objeto base
         const producto = {
             id_productos: id,
+            codigo_interno: id, // Asumimos mismo código para manual
+            codigo_proveedor: '', // Manual no suele tener este dato al vuelo
             descripcion: descripcion,
             cantidad: cantidad,
-            precio_unitario: precioUnitario,
+            precio_unitario: precioUnitario.toFixed(4),
             impuesto_aplicable: impuestoAplicable,
             impuesto_descripcion: impuestoInfo.descripcion_completa,
-            subtotal: subtotal
+            codigo_ganancia: codigoGanancia,
+            subtotal: subtotal.toFixed(4),
+            descuento: 0,
+            
+            // Inicializamos las columnas de venta en 0
+            ventas_no_sujetas: 0,
+            ventas_exentas: 0,
+            ventas_gravadas: 0
         };
 
+        // 3. DISTRIBUCIÓN AUTOMÁTICA (La corrección clave)
+        // Determinamos dónde poner el dinero según el impuesto seleccionado
+        if (impuestoAplicable === '20') {
+            producto.ventas_gravadas = subtotal.toFixed(4);
+        } else if (impuestoAplicable === '00' || impuestoInfo.porcentaje === 0) {
+            // Si el código es 00 o el porcentaje es 0, asumimos Exento
+            // (Si usas No Sujeto, tendrías que tener un código específico o un checkbox en el UI)
+            producto.ventas_exentas = subtotal.toFixed(4);
+        } else {
+            // Fallback por defecto a Gravada
+            producto.ventas_gravadas = subtotal.toFixed(4);
+        }
+
+        // 4. Agregar y Renderizar
         productosCompra.push(producto);
-        renderizarTabla();
-        limpiarFormularioProducto();
+        renderizarTabla(); // Esto ahora llamará a actualizarTotales() con datos reales
+        
+        // Limpiar campos de entrada (Visual)
+        $('#codigoProducto').val('').focus();
+        $('#descripcionProducto').val('');
+        $('#cantidadProducto').val('1');
+        $('#precioUnitarioProducto').val('');
     });
     
     // Llamadas iniciales
