@@ -132,44 +132,38 @@ case 'guardarCompra':
            // 2. Procesar Detalle de Productos (MANUAL)
             foreach ($datos_detalle as $producto) {
                 
-                // --- A. OBTENER DATOS BASICOS ---
-                // Leemos lo que escribiste en el input. Puede venir como 'precio_costo' o 'precio_unitario'
-                $precio_papel = floatval($producto['precio_unitario'] ?? $producto['precio_costo'] ?? 0);
-                $cantidad_input = floatval($producto['cantidad']);
+               // --- A. OBTENER DATOS ---
+               $precio_papel = floatval($producto['precio_unitario'] ?? $producto['precio_costo'] ?? 0);
+               $cantidad_input = floatval($producto['cantidad']);
 
-                // --- B. LÓGICA DE TIPOS DTE (CASUÍSTICA EL SALVADOR) ---
-                $tipo_dte = $datos_cabecera['tipo_documento']; // 01, 03, 05, etc.
-                
-                $costo_neto_kardex = 0;
-                $factor_cantidad = 1; // 1 = Entrada (Suma), -1 = Devolución (Resta)
+               // --- B. LÓGICA DE TIPOS DTE (CASUÍSTICA EL SALVADOR) ---
+               $tipo_dte = $datos_cabecera['tipo_documento']; 
+               
+               $costo_neto_kardex = 0;
+               $factor_cantidad = 1; // 1 = Entrada, -1 = Salida
 
-                switch ($tipo_dte) {
-                    case '01': // FACTURA (IVA Incluido)
-                        // Si escribiste $1.13, el costo real es $1.00
-                        $costo_neto_kardex = round($precio_papel / 1.13, 4);
-                        $factor_cantidad = 1;
-                        break;
+               switch ($tipo_dte) {
+                   case '01': // FACTURA (Trae IVA, hay que limpiar)
+                       $costo_neto_kardex = round($precio_papel / 1.13, 4);
+                       $factor_cantidad = 1;
+                       break;
 
-                    case '03': // CRÉDITO FISCAL (Neto)
-                    case '11': // EXPORTACIÓN
-                    case '14': // SUJETO EXCLUIDO
-                        // El precio que escribiste ya es el costo neto
-                        $costo_neto_kardex = $precio_papel;
-                        $factor_cantidad = 1;
-                        break;
+                   case '05': // NOTA DE CRÉDITO (Devolución -> RESTA Inventario)
+                       $costo_neto_kardex = $precio_papel; // Asumimos viene neto
+                       $factor_cantidad = -1; 
+                       break;
 
-                    case '05': // NOTA DE CRÉDITO (Devolución)
-                        // Si estás en COMPRAS y metes una NC, estás devolviendo producto.
-                        // El stock debe BAJAR.
-                        $costo_neto_kardex = $precio_papel;
-                        $factor_cantidad = -1; // <--- ESTO HARÁ QUE SE RESTE
-                        break;
+                   //// Todos estos son precios NETOS y SUMAN inventario (CCF, Exportación, etc)
+                   case '03': case '04': case '06': case '07': case '08': 
+                   case '09': case '11': case '14': case '15':
+                       $costo_neto_kardex = $precio_papel;
+                       $factor_cantidad = 1;
+                       break;
 
-                    default:
-                        // Por defecto asumimos neto y entrada (Comportamiento CCF)
-                        $costo_neto_kardex = $precio_papel;
-                        $factor_cantidad = 1;
-                        break;
+                   default:
+                       $costo_neto_kardex = $precio_papel;
+                       $factor_cantidad = 1;
+                       break;
                 }
 
                 // --- C. BUSCAR/FORZAR GANANCIA ---
@@ -578,7 +572,7 @@ case 'guardarCompra':
             }
 
         // --- A. LÓGICA DE COSTO NETO (Detectar si viene con IVA) ---
-        $costo_recibido = floatval($producto['precio_costo']); // Precio que viene en el JSON
+        $precio_papel = floatval($producto['precio_costo']); // Precio que viene en el JSON
         $tipo_dte_compra = $compra_data['tipo_dte'] ?? '03'; // 01: Factura, 03: CCF
             // --- B. LÓGICA AVANZADA DE TIPOS DTE (EL SALVADOR) ---
                 $tipo_dte = $compra_data['tipo_dte']; // '01', '03', '05', '14', etc.
@@ -690,12 +684,12 @@ case 'guardarCompra':
 
         // FÓRMULA FINAL: (CostoNeto * (1+IVA)) * (1+Ganancia)
         // Ejemplo: ($10.00 * 1.13) * 1.30 = $14.69
-        $precio_base_con_impuestos = ($nuevo_costo * $factor_impuesto) + $monto_impuesto_fijo;
+        $precio_base_con_impuestos = ($costo_neto_kardex * $factor_impuesto) + $monto_impuesto_fijo;
         $nuevo_precio_venta = round($precio_base_con_impuestos * $factor_ganancia, 4);
 
         // --- DEBUG LOG (Para verificar que ahora sí toma ganancia) ---
         error_log("PROD: " . ($producto['descripcion']));
-        error_log("COSTO ORIG: $costo_recibido | TIPO DTE: $tipo_dte_compra | COSTO NETO CALC: $nuevo_costo");
+        error_log("COSTO ORIG: $costo_neto_kardex | TIPO DTE: $tipo_dte_compra | COSTO NETO CALC: $costo_neto_kardex");
         error_log("GANANCIA USADA: " . ($info_gan['porcentaje'] ?? 0) . "% (Codigo: $ganancia_codigo)");
         error_log("PRECIO VENTA: $nuevo_precio_venta");
         // -------------------------------------------------------------
@@ -756,7 +750,7 @@ case 'guardarCompra':
                 $codigo_institucion_sesion,
                 $producto['codigo_categoria'],
                 $producto['descripcion'],
-                $nuevo_costo,
+                $costo_neto_kardex,
                 $nuevo_precio_venta,
                 $impuesto_codigo,
                 $producto['unidad_medida'],
@@ -781,8 +775,8 @@ case 'guardarCompra':
             $producto['codigo_interno'],
             $producto['cantidad'],
             $producto['unidad_medida'],
-            $nuevo_costo, // Guardamos el neto
-            $costo_recibido, // Guardamos el precio original de la factura (con IVA si era 01)
+            $costo_neto_kardex, // Guardamos el neto
+            $precio_papel, // Guardamos el precio original de la factura (con IVA si era 01)
             $producto['iva'],
             $producto['descuento'],
             $producto['venta_no_suj'] ?? 0,
@@ -1259,18 +1253,32 @@ case 'guardarCompra':
                 ];
 
         
-                // =============================
-                //  MAPEO DETALLE (productos)
+              // =============================
+                //  MAPEO DETALLE (productos) CON AUTO-GENERACIÓN DE CÓDIGO
                 // =============================
                 $productos = [];
+                $contador_sin_codigo = 1; // Para generar códigos únicos en esta carga
+
                 foreach ($mapeo['productos_dte'] as $item) {
                     $codigo_proveedor_producto = $item['codigo'] ?? null;
                     $descripcion_producto      = $item['descripcion'] ?? null;
         
+                    // --- CORRECCIÓN: Si viene sin código, asignar uno genérico ---
+                    if (empty($codigo_proveedor_producto)) {
+                        // Generamos un código temporal: "SIN-COD-" + un hash corto de la descripción + contador
+                        $hash_desc = strtoupper(substr(md5($descripcion_producto), 0, 4));
+                        $codigo_proveedor_producto = "GEN-" . $hash_desc . "-" . $contador_sin_codigo;
+                        $contador_sin_codigo++;
+                    }
+                    // ------------------------------------------------------------
+
                     // Buscar producto en catálogo interno
                     $sql_find_product = "SELECT id_productos, codigo_interno, impuesto_aplicable, codigo_ganancia, precio_costo, unidad_medida 
                                             FROM catalogo_productos 
                                             WHERE codigo_interno = ? AND codigo_institucion = ?";
+                    // Nota: Aquí buscamos por codigo_interno que a veces coincide, pero idealmente deberías buscar por codigo_proveedor también
+                    // Si tu lógica es buscar por codigo_proveedor, ajusta la consulta SQL aquí.
+                    
                     $stmt_find_product = $pdo->prepare($sql_find_product);
                     $stmt_find_product->execute([$codigo_proveedor_producto, $codigo_institucion_sesion]);
                     $producto_db = $stmt_find_product->fetch(PDO::FETCH_ASSOC);
@@ -1278,7 +1286,7 @@ case 'guardarCompra':
                     $producto_mapeado = [
                         'id_productos'       => $producto_db['id_productos'] ?? null,
                         'codigo_interno'     => $producto_db['codigo_interno'] ?? null,
-                        'codigo_proveedor'   => $codigo_proveedor_producto,
+                        'codigo_proveedor'   => $codigo_proveedor_producto, // Aquí ya va lleno sí o sí
                         'descripcion'        => $descripcion_producto,
                         'cantidad'           => $item['cantidad'] ?? 0,
                         'precio_unitario'    => $item['precioUni'] ?? 0,

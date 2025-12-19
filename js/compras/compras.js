@@ -235,23 +235,62 @@ $('#btnDte').on('click', function() {
             actualizarTotales();
         }
 
-    // Editar cantidad
+    // =======================================================
+    //  SOLUCIÓN AL PROBLEMA DE EDICIÓN Y RETROCESO
+    // =======================================================
+
+    // Editar cantidad (Sin redibujar toda la tabla)
     $(document).on('input', '.inputCantidad', function() {
         const index = $(this).data('index');
-        const nuevaCantidad = parseFloat($(this).val()) || 0;
+        let val = $(this).val();
+        
+        // Permitir que el usuario borre todo para escribir de nuevo
+        if (val === '') {
+            productosCompra[index].cantidad = 0;
+            return; 
+        }
+
+        const nuevaCantidad = parseFloat(val) || 0;
         productosCompra[index].cantidad = nuevaCantidad;
-        productosCompra[index].subtotal = (nuevaCantidad * parseFloat(productosCompra[index].precio_unitario)).toFixed(4);
-        renderizarTabla();
+        
+        // Recalcular subtotal de la fila visualmente
+        recalcularFila(index);
     });
 
-    // Editar precio unitario
+    // Editar precio unitario (Sin redibujar toda la tabla)
     $(document).on('input', '.inputPrecio', function() {
         const index = $(this).data('index');
-        const nuevoPrecio = parseFloat($(this).val()) || 0;
-        productosCompra[index].precio_unitario = nuevoPrecio.toFixed(4);
-        productosCompra[index].subtotal = (parseFloat(productosCompra[index].cantidad) * nuevoPrecio).toFixed(4);
-        renderizarTabla();
+        let val = $(this).val();
+
+        if (val === '') {
+            productosCompra[index].precio_unitario = 0;
+            return;
+        }
+
+        const nuevoPrecio = parseFloat(val) || 0;
+        productosCompra[index].precio_unitario = nuevoPrecio;
+        
+        // Recalcular subtotal de la fila visualmente
+        recalcularFila(index);
     });
+
+
+// Función auxiliar para actualizar solo la fila y los totales
+function recalcularFila(index) {
+    let prod = productosCompra[index];
+    let subtotal = (prod.cantidad * parseFloat(prod.precio_unitario)) - (prod.descuento || 0);
+    
+    // Guardamos el dato
+    productosCompra[index].subtotal = subtotal.toFixed(4);
+
+    // Actualizamos SOLO la celda del subtotal en la tabla (la columna 10 u 11 según tu HTML)
+    // Buscamos la fila correspondiente y la celda del subtotal
+    let fila = $(`#tablaProductosCompra tbody tr`).eq(index);
+    fila.find('td:last').prev().text(subtotal.toFixed(4)); 
+
+    // Actualizar totales globales
+    actualizarTotales();
+}
 
 
 // ✅ Totales
