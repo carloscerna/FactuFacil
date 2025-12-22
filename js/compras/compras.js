@@ -7,10 +7,67 @@ $(function () {
 // Función para limpiar todo
 function limpiarPantalla() {
     $('#formCompra')[0].reset();
+    
+    // Resetear selects si usas Select2 (si no, el reset() ya lo hace)
+    $('#selectTipoDte').val('').trigger('change');
+    $('#selectProveedor').val('').trigger('change');
+
     productosCompra = [];
     renderizarTabla();
-    $("#totalNoSuj, #totalExenta, #totalGravada, #totalIva, #totalDescuento, #totalFinal").text("0.0000");
+    $("#totalNoSuj, #totalExenta, #totalGravada, #totalIva, #totalDescuento, #totalFinal").text("0.00");
+    
+    // RE-BLOQUEAR CAMPOS HASTA NUEVO AVISO
+    validarEncabezado(); 
+    
+    // Asegurar que estamos en modo manual por defecto
+    modoDeGuardado = 'manual';
 }
+
+
+// =======================================================
+    //  CONTROL DE ACCESO: BLOQUEO DE PRODUCTOS
+    // =======================================================
+    
+    // Función que evalúa si habilita o deshabilita la zona de productos
+    function validarEncabezado() {
+        const numDoc = $('#numero_documento').val().trim();
+        const tipoDoc = $('#selectTipoDte').val();
+        
+        // Debe tener número Y tipo de documento seleccionado
+        const formularioIncompleto = (numDoc === '' || tipoDoc === '' || tipoDoc === null);
+
+        // Campos a bloquear/desbloquear
+        const camposProducto = [
+            '#codigoProducto',
+            '#cantidadProducto', 
+            '#precioUnitarioProducto',
+            '#btnAgregarProducto',
+            // También bloqueamos el botón de la lupa (el que abre el modal)
+            'button[data-bs-target="#buscarProductoModal"]' 
+        ];
+
+        if (formularioIncompleto) {
+            $(camposProducto.join(', ')).prop('disabled', true);
+            // Opcional: Agregar clase visual para indicar deshabilitado
+            $('#codigoProducto').attr('placeholder', 'Complete el encabezado primero...');
+        } else {
+            $(camposProducto.join(', ')).prop('disabled', false);
+            $('#codigoProducto').attr('placeholder', 'Escanee o ingrese el código');
+        }
+    }
+
+    // Ejecutar validación cuando cambien estos campos
+    $('#numero_documento, #selectTipoDte').on('input change', function() {
+        validarEncabezado();
+        // Si cambió el tipo de documento, actualizamos los totales por si ya había productos cargados (para recalcular IVA)
+        if (productosCompra.length > 0) {
+            actualizarTotales();
+        }
+    });
+
+    // Llamada inicial al cargar la página (para que empiece bloqueado)
+    validarEncabezado();
+
 
 // Mostrar secciones con confirmación
 function cambiarModo(modo) {
@@ -33,22 +90,55 @@ function cambiarModo(modo) {
         aplicarCambio(modo);
     }
 }
-
-// Aplica el cambio de modo
+// Aplica el cambio de modo (Visual mejorado)
 function aplicarCambio(modo) {
     limpiarPantalla();
 
+    // Resetear clases de botones
+    $('.mode-btn').removeClass('active');
+
     if (modo === "manual") {
+        $('#btnManual').addClass('active');
         $('#seccionManual').show();
         $('#seccionDte').hide();
     } else {
+        $('#btnDte').addClass('active');
         $('#seccionManual').hide();
-        $('#seccionDte').show();
+        $('#seccionDte').show(); // Se muestra el Dropzone
     }
 
     modoDeGuardado = modo;
-    console.log("Modo cambiado a:", modoDeGuardado);
 }
+
+// --- EFECTOS DRAG & DROP PARA DTE ---
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('json_file');
+const fileNameBadge = document.getElementById('fileNameBadge');
+
+// Efecto visual al arrastrar
+['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    }, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+    }, false);
+});
+
+// Detectar cuando se suelta o selecciona un archivo
+fileInput.addEventListener('change', function() {
+    if (this.files && this.files[0]) {
+        fileNameBadge.style.display = 'inline-block';
+        fileNameBadge.textContent = 'Archivo listo: ' + this.files[0].name;
+        fileNameBadge.className = 'badge bg-success mt-2 animate__animated animate__pulse';
+        $('.upload-icon').removeClass('fa-cloud-upload-alt').addClass('fa-file-code text-success');
+    }
+});
 
 // Botones
 $('#btnManual').on('click', function() {
@@ -550,6 +640,11 @@ $('#btnDte').on('click', function() {
                             $('#descripcionProducto').val(producto.descripcion);
                             $('#impuestoAplicableProducto').val(producto.impuesto_aplicable);
                             $('#codigoGananciaProducto').val(producto.codigo_ganancia);
+                            // Llenar campos OCULTOS (Datos Reales)
+                            $('#idProductoReal').val(producto.id_productos);
+                            $('#codigoInternoReal').val(producto.codigo_interno);
+                            $('#codigoProveedorReal').val(producto.codigo_proveedor); // Corrección del código
+
                             const impuestoInfo = await obtenerDetalleImpuesto(producto.impuesto_aplicable);
                             const precioConImpuesto = await calcularPrecioConImpuesto(producto.precio_costo, impuestoInfo);
                             const precioUnitarioFinal = await calcularPrecioConGanancia(precioConImpuesto, producto.codigo_ganancia);
@@ -558,10 +653,26 @@ $('#btnDte').on('click', function() {
                         } else {
                             toastr.warning('Producto no encontrado. Utilice la búsqueda por descripción.');
                             $('#codigoProducto').focus().select();
+                            // Limpiar IDs reales por seguridad
+                            $('#idProductoReal').val(''); 
+                            $('#codigoInternoReal').val('');
                         }
                     }
                 });
             }
+        }
+    });
+
+// =======================================================
+    //  FLUJO RÁPIDO: AGREGAR CON TECLA ENTER
+    // =======================================================
+    
+    // Si estás en Cantidad o Precio y das Enter, se hace clic automático en "Agregar"
+    $('#cantidadProducto, #precioUnitarioProducto').on('keypress', function(e) {
+        if (e.which === 13) { // 13 es el código de la tecla Enter
+            e.preventDefault();
+            // Disparamos el clic del botón que ya configuramos con toda la lógica (impuestos, etc.)
+            $('#btnAgregarProducto').click(); 
         }
     });
 
@@ -727,33 +838,47 @@ $('#formSubirDte').submit(function(e) {
                     $('#totalFinal').text(parseFloat(response.compra.resumen.total_pagar).toFixed(2));
                 }
 
-                // 🔍 Validar número de documento después de procesar el JSON
-                if (response.compra.numero_control) {
-                    $.ajax({
-                        url: 'admin/compras/crud_compras.php',
-                        type: 'POST',
-                        dataType: 'json',
-                        data: {
-                            accion: 'validarNumeroDocumento',
-                            numero_documento: response.compra.numero_control
-                        },
-                        success: function(resp) {
-                            if (resp.existe) {
-                                Swal.fire({
-                                    icon: 'error',
-                                    title: 'Documento duplicado',
-                                    text: 'El número de documento ya está registrado en otra compra.',
-                                    confirmButtonText: 'Entendido'
-                                }).then(() => {
-                                    // limpiar vista previa y formulario
-                                    $('#numero_documento').val('');
-                                    productosCompra = [];
-                                    renderizarTabla();
-                                });
+               // 🔍 VALIDACIÓN DE DUPLICADOS Y LIMPIEZA AUTOMÁTICA
+               if (response.compra.numero_control) {
+                $.ajax({
+                    url: 'admin/compras/crud_compras.php',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: {
+                        accion: 'validarNumeroDocumento',
+                        numero_documento: response.compra.numero_control
+                    },
+                    success: function(resp) {
+                        if (resp.existe) {
+                            // SONIDO O ALERTA DE ERROR
+                            Swal.fire({
+                                icon: 'error',
+                                title: '¡Documento Duplicado!',
+                                html: `El documento <b>${response.compra.numero_control}</b> ya existe en el sistema.<br>No se puede procesar nuevamente.`,
+                                confirmButtonText: 'Entendido, limpiar',
+                                allowOutsideClick: false
+                            }).then(() => {
+                                // AQUÍ OCURRE LA MAGIA: REINICIO TOTAL
+                                resetearInterfazCompleta();
+                            });
+                        } else {
+                            // Si no existe, mostramos la vista previa normalmente
+                            mostrarVistaPrevia(response.compra, response.productos);
+                            
+                            // Recargar proveedores y mostrar resumen
+                            if (response.compra.proveedor_id) {
+                                recargarProveedores(response.compra.proveedor_id);
+                            }
+                            // ... (resto de tu lógica de totales) ...
+                            if (response.compra.resumen) {
+                                $('#totalNoSuj').text(parseFloat(response.compra.resumen.total_no_suj).toFixed(2));
+                                // ... llenar resto de totales ...
+                                $('#totalFinal').text(parseFloat(response.compra.resumen.total_pagar).toFixed(2));
                             }
                         }
-                    });
-                }
+                    }
+                });
+            }
 
             } else {
                 toastr.error('Error: ' + response.mensaje);
@@ -812,30 +937,83 @@ $('#formSubirDte').submit(function(e) {
         }
     });
 }
-// ✅ CORRECCIÓN: Botón Agregar Producto Manual
-    // Ahora distribuye el monto correctamente al instante (Gravado/Exento)
+// =======================================================
+    //  BOTÓN AGREGAR (CON VALIDACIÓN DE DUPLICADOS Y CÓDIGOS REALES)
+    // =======================================================
     $('#btnAgregarProducto').on('click', async function() {
-        const id = $('#codigoProducto').val();
+        // 1. Obtener datos de los campos OCULTOS (Lo que vino de la base de datos)
+        const idReal = $('#idProductoReal').val();
+        const codInternoReal = $('#codigoInternoReal').val();
+        const codProveedorReal = $('#codigoProveedorReal').val();
+        
+        // Datos del formulario
         const descripcion = $('#descripcionProducto').val();
-        const impuestoAplicable = $('#impuestoAplicableProducto').val() || '20'; // Default '20'
+        const impuestoAplicable = $('#impuestoAplicableProducto').val() || '20';
         const codigoGanancia = $('#codigoGananciaProducto').val();
         const cantidad = parseFloat($('#cantidadProducto').val()) || 0;
         const precioUnitario = parseFloat($('#precioUnitarioProducto').val()) || 0;
         
-        if (!id || !descripcion || cantidad <= 0 || precioUnitario <= 0) {
-            toastr.warning('Por favor, complete todos los campos del producto.');
+        // Validación básica
+        if (!idReal || !descripcion || cantidad <= 0 || precioUnitario <= 0) {
+            toastr.warning('Busque un producto válido y defina precio/cantidad.');
             return;
         }
 
-        // 1. Cálculos iniciales (4 decimales)
+        // 2. VERIFICAR DUPLICADOS
+        // Buscamos si este ID ya existe en el array
+        const indiceExistente = productosCompra.findIndex(p => p.id_productos == idReal);
+
+        if (indiceExistente !== -1) {
+            // --- CASO: YA EXISTE ---
+            const prodExistente = productosCompra[indiceExistente];
+            
+            Swal.fire({
+                title: 'Producto ya listado',
+                html: `El producto <b>${descripcion}</b> ya está en la lista con cantidad <b>${prodExistente.cantidad}</b>.<br>¿Desea sumar la nueva cantidad?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Sí, sumar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // 1. Sumar la cantidad en el ARRAY (Memoria)
+                    let nuevaCantidadTotal = parseFloat(prodExistente.cantidad) + cantidad;
+                    productosCompra[indiceExistente].cantidad = nuevaCantidadTotal;
+                    
+                    // 2. Actualizar precio si cambió
+                    productosCompra[indiceExistente].precio_unitario = precioUnitario.toFixed(4);
+                    
+                    // ========================================================
+                    // 3. ACTUALIZAR VISUALMENTE EL INPUT EN LA TABLA (¡ESTO FALTABA!)
+                    // ========================================================
+                    let fila = $('#tablaProductosCompra tbody tr').eq(indiceExistente);
+                    fila.find('.inputCantidad').val(nuevaCantidadTotal.toFixed(2));
+                    fila.find('.inputPrecio').val(precioUnitario.toFixed(4));
+                    // ========================================================
+    
+                    // 4. Recalcular subtotales y totales
+                    recalcularFila(indiceExistente); 
+                    
+                    toastr.success('Cantidad actualizada correctamente.');
+                    limpiarFormularioProducto();
+                }
+            });
+            return; // Salimos para no agregar fila nueva
+        }
+
+        // --- CASO: NO EXISTE (AGREGAR NUEVO) ---
+
+        // 3. Cálculos iniciales
         const subtotal = (cantidad * precioUnitario);
         const impuestoInfo = await obtenerDetalleImpuesto(impuestoAplicable);
         
-        // 2. Construir objeto base
+        // 4. Construir objeto (USANDO CÓDIGOS REALES)
         const producto = {
-            id_productos: id,
-            codigo_interno: id, // Asumimos mismo código para manual
-            codigo_proveedor: '', // Manual no suele tener este dato al vuelo
+            id_productos: idReal,
+            codigo_interno: codInternoReal,     // Ahora sí es el correcto
+            codigo_proveedor: codProveedorReal, // Ahora sí es el correcto
             descripcion: descripcion,
             cantidad: cantidad,
             precio_unitario: precioUnitario.toFixed(4),
@@ -845,35 +1023,40 @@ $('#formSubirDte').submit(function(e) {
             subtotal: subtotal.toFixed(4),
             descuento: 0,
             
-            // Inicializamos las columnas de venta en 0
+            // Inicializar columnas
             ventas_no_sujetas: 0,
             ventas_exentas: 0,
             ventas_gravadas: 0
         };
 
-        // 3. DISTRIBUCIÓN AUTOMÁTICA (La corrección clave)
-        // Determinamos dónde poner el dinero según el impuesto seleccionado
+        // 5. Distribución Fiscal
         if (impuestoAplicable === '20') {
             producto.ventas_gravadas = subtotal.toFixed(4);
         } else if (impuestoAplicable === '00' || impuestoInfo.porcentaje === 0) {
-            // Si el código es 00 o el porcentaje es 0, asumimos Exento
-            // (Si usas No Sujeto, tendrías que tener un código específico o un checkbox en el UI)
             producto.ventas_exentas = subtotal.toFixed(4);
         } else {
-            // Fallback por defecto a Gravada
             producto.ventas_gravadas = subtotal.toFixed(4);
         }
 
-        // 4. Agregar y Renderizar
+        // 6. Guardar y Renderizar
         productosCompra.push(producto);
-        renderizarTabla(); // Esto ahora llamará a actualizarTotales() con datos reales
+        renderizarTabla(); 
         
-        // Limpiar campos de entrada (Visual)
+        limpiarFormularioProducto();
+    });
+
+    // Función auxiliar para limpiar la zona de carga después de agregar
+    function limpiarFormularioProducto() {
         $('#codigoProducto').val('').focus();
         $('#descripcionProducto').val('');
         $('#cantidadProducto').val('1');
         $('#precioUnitarioProducto').val('');
-    });
+        
+        // Limpiar ocultos también
+        $('#idProductoReal').val('');
+        $('#codigoInternoReal').val('');
+        $('#codigoProveedorReal').val('');
+    }
     
     // Llamadas iniciales
     $.when(cargarCatalogos(), cargarProveedores()).done(function(catalogoData, proveedoresData) {
@@ -913,5 +1096,31 @@ $('#formSubirDte').submit(function(e) {
             });
         }
     });
+
+
+// =======================================================
+    //  FUNCIÓN DE RESET TOTAL (VUELVE AL INICIO)
+    // =======================================================
+    function resetearInterfazCompleta() {
+        // 1. Limpiar variables y tablas
+        limpiarPantalla(); // Tu función existente que borra el array y la tabla HTML
+        
+        // 2. Ocultar ambas secciones (Manual y DTE)
+        $('#seccionManual').hide();
+        $('#seccionDte').hide();
+        
+        // 3. Desactivar botones superiores (Quitar color azul)
+        $('.mode-btn').removeClass('active');
+        
+        // 4. Resetear visualmente la zona de carga (Dropzone)
+        $('#formSubirDte')[0].reset(); // Borra el archivo del input
+        $('#fileNameBadge').hide();    // Oculta el badge con el nombre
+        $('.upload-icon')
+            .removeClass('fa-file-code text-success')
+            .addClass('fa-cloud-upload-alt'); // Vuelve el ícono a gris original
+            
+        // 5. Resetear modo de guardado por defecto
+        modoDeGuardado = 'manual';
+    }
 
 });

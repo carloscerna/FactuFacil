@@ -1032,22 +1032,38 @@ case 'guardarCompra':
         }
         break;
 
-    case 'buscarProducto':
-        $termino = $_POST['termino'] ?? '';
-        try {
-            $sql = "SELECT id_productos, codigo_interno, descripcion, unidad_medida, precio_costo, impuesto_aplicable, codigo_ganancia FROM catalogo_productos WHERE (id_productos = ? OR codigo_interno = ? OR codigo_barra = ?) AND codigo_institucion = ?";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$termino, $termino, $termino, $codigo_institucion_sesion]);
-            $producto = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($producto) {
-                echo json_encode(['respuesta' => true, 'producto' => $producto]);
-            } else {
-                echo json_encode(['respuesta' => false, 'mensaje' => 'Producto no encontrado.']);
+        case 'buscarProducto':
+            $termino = $_POST['termino'] ?? '';
+            try {
+                // CORRECCIÓN: Agregamos búsqueda por 'codigo_proveedor'
+                // Usamos CAST(id_productos AS TEXT) para evitar errores de PostgreSQL si el término tiene letras
+                $sql = "SELECT id_productos, codigo_interno, codigo_proveedor, descripcion, 
+                               unidad_medida, precio_costo, precio_unitario, 
+                               impuesto_aplicable, codigo_ganancia 
+                        FROM catalogo_productos 
+                        WHERE (CAST(id_productos AS TEXT) = ? 
+                               OR codigo_interno = ? 
+                               OR codigo_barra = ? 
+                               OR codigo_proveedor = ?) 
+                        AND codigo_institucion = ?";
+                
+                $stmt = $pdo->prepare($sql);
+                // Pasamos el término 4 veces (uno para cada campo del OR) + el código de institución
+                $stmt->execute([$termino, $termino, $termino, $termino, $codigo_institucion_sesion]);
+                
+                $producto = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($producto) {
+                    // Cálculo rápido de sugerencia de precio (opcional, igual el JS recalcula)
+                    // Esto es solo para que el JSON vaya completo
+                    echo json_encode(['respuesta' => true, 'producto' => $producto]);
+                } else {
+                    echo json_encode(['respuesta' => false, 'mensaje' => 'Producto no encontrado.']);
+                }
+            } catch (PDOException $e) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al buscar producto: ' . $e->getMessage()]);
             }
-        } catch (PDOException $e) {
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Error al buscar producto: ' . $e->getMessage()]);
-        }
-        break;
+            break;
         
     case 'buscarProductoDescripcion':
     $draw = $_POST['draw'] ?? 1;
