@@ -4,25 +4,31 @@ $(function () {
     let modoDeGuardado = 'manual';
     let compraEncabezadoDte = {};
 
-// Función para limpiar todo
-function limpiarPantalla() {
-    $('#formCompra')[0].reset();
-    
-    // Resetear selects si usas Select2 (si no, el reset() ya lo hace)
-    $('#selectTipoDte').val('').trigger('change');
-    $('#selectProveedor').val('').trigger('change');
 
-    productosCompra = [];
-    renderizarTabla();
-    $("#totalNoSuj, #totalExenta, #totalGravada, #totalIva, #totalDescuento, #totalFinal").text("0.00");
-    
-    // RE-BLOQUEAR CAMPOS HASTA NUEVO AVISO
-    validarEncabezado(); 
-    
-    // Asegurar que estamos en modo manual por defecto
-    modoDeGuardado = 'manual';
-}
+    // =======================================================
+    //  ACTUALIZACIÓN: FUNCIÓN LIMPIAR PANTALLA
+    // =======================================================
+    function limpiarPantalla() {
+        $('#formCompra')[0].reset();
+        
+        // Resetear Select2 si usas
+        $('#selectTipoDte').val('').trigger('change');
+        $('#selectProveedor').val('').trigger('change');
+        
+        // --- AQUÍ ESTÁ LA CLAVE PARA TU PUNTO 1 ---
+        // Resetear Condición y Ocultar dependientes
+        $('#selectCondicionPago').val('1').trigger('change'); // Volver a contado por defecto
+        $('#divMetodoPago').hide();  // Forzar oculto al inicio
+        $('#divPlazoCredito').hide();
+        // -------------------------------------------
 
+        productosCompra = [];
+        renderizarTabla();
+        $("#totalNoSuj, #totalExenta, #totalGravada, #totalIva, #totalDescuento, #totalFinal").text("0.00");
+        
+        validarEncabezado(); // Re-bloquear campos
+        modoDeGuardado = 'manual';
+    }
 
 // =======================================================
     //  CONTROL DE ACCESO: BLOQUEO DE PRODUCTOS
@@ -578,6 +584,10 @@ $('#btnDte').on('click', function() {
                 plazo_pago: $('#selectPlazoPagoDTE').val(),
                 observaciones: $('[name="observaciones"]').val(),
                 
+            // --- AGREGAR ESTOS DOS NUEVOS ---
+                dias_credito: $('#inputDiasCredito').val() || 0,        // Si está vacío, manda 0
+                fecha_vencimiento: $('#inputFechaVencimiento').val(),    // La fecha calculada
+
                 // Totales Calculados
                 total_gravado: sumGravado.toFixed(2),
                 total_iva: sumIva.toFixed(2),
@@ -906,6 +916,38 @@ $('#formSubirDte').submit(function(e) {
         $('[name="plazo_pago"]').val(compra.plazo_pago);
         $('[name="observaciones"]').val(compra.observaciones);
 
+        // 2. --- INTELIGENCIA DE PAGO DESDE JSON (NUEVO) ---
+            if (compra.resumen) {
+                
+                // A. CONDICIÓN DE OPERACIÓN
+                // El JSON trae 1 o 2. Lo asignamos al select.
+                let condicion = compra.resumen.condicionOperacion || '1';
+                $('#selectCondicionPago').val(condicion).trigger('change'); 
+                // Nota: .trigger('change') disparará la animación que hicimos en el Paso 2
+
+                // B. MÉTODO DE PAGO (Si es Contado)
+                if (condicion == '1' && compra.resumen.pagos && compra.resumen.pagos.length > 0) {
+                    // Tomamos el primer pago registrado
+                    let codigoPago = compra.resumen.pagos[0].codigo; 
+                    // Esperamos un momento a que el slideDown termine o lo forzamos
+                    setTimeout(() => {
+                        $('#selectFormaPago').val(codigoPago);
+                    }, 100);
+                }else{
+                    // CASO TU ARCHIVO JSON:
+                    // Es Contado (1) pero 'pagos' es null.
+                    // Asumimos Billetes (01) por defecto.
+                    setTimeout(() => { $('#selectFormaPago').val('01'); }, 100);
+                }
+                
+                // C. PLAZO (Si es Crédito)
+                if (condicion == '2' && compra.resumen.pagos && compra.resumen.pagos.length > 0) {
+                    // A veces viene en 'plazo' dentro de pagos
+                    let plazoTexto = compra.resumen.pagos[0].plazo || '';
+                    $('#inputPlazo').val(plazoTexto);
+                }
+            }
+
         // Llenar el arreglo de productos y renderizar la tabla
         productosCompra = productos;
         renderizarTabla();
@@ -1122,5 +1164,110 @@ $('#formSubirDte').submit(function(e) {
         // 5. Resetear modo de guardado por defecto
         modoDeGuardado = 'manual';
     }
+
+// =======================================================
+    //  CONTROL DE FORMA DE PAGO (CONTADO vs CRÉDITO)
+    // =======================================================
+    
+// Función para llenar el select de formas de pago
+    function cargarMetodosPago() {
+        $.ajax({
+            url: 'admin/compras/crud_compras.php',
+            type: 'POST',
+            data: { accion: 'obtenerMetodosPago' },
+            success: function(response) {
+                let opciones = ''; // Quitamos el "Seleccione..." para forzar una opción válida
+                try {
+                    const data = JSON.parse(response);
+                    data.forEach(m => {
+                        opciones += `<option value="${m.codigo}">${m.codigo} - ${m.descripcion}</option>`;
+                    });
+                    $('#selectFormaPago').html(opciones);
+                    
+                    // --- CORRECCIÓN SOLICITADA ---
+                    // Forzar selección de "01" (Billetes) por defecto al cargar
+                    $('#selectFormaPago').val('01'); 
+                    
+                } catch(e) { console.error("Error cargando métodos pago"); }
+            }
+        });
+    }
+
+// =======================================================
+    //  LOGICA DE CONDICIÓN DE PAGO (VISIBILIDAD)
+    // =======================================================
+    
+    // Evento Change: Muestra/Oculta según selección
+    $('#selectCondicionPago').on('change', function() {
+        const condicion = $(this).val(); // 1: Contado, 2: Crédito
+        
+        if (condicion == '1') {
+            // MOSTRAR MÉTODO DE PAGO
+            $('#divMetodoPago').slideDown(); // Animación suave
+            $('#selectFormaPago').prop('required', true);
+
+            // --- CORRECCIÓN: Volver a poner "01" por defecto ---
+            // Solo si no tiene valor seleccionado, o forzarlo siempre:
+            if (!$('#selectFormaPago').val()) {
+                $('#selectFormaPago').val('01');
+            }
+            // ---------------------------------------------------
+
+            // OCULTAR PLAZO
+            $('#divPlazoCredito').hide();
+            $('#inputPlazo').prop('required', false).val('');
+        } else if (condicion == '2') {
+            // MOSTRAR PLAZO
+            $('#divMetodoPago').hide();
+            $('#selectFormaPago').prop('required', false).val('');
+            
+            // OCULTAR MÉTODO PAGO
+            $('#divPlazoCredito').slideDown(); 
+            $('#inputPlazo').prop('required', true);
+        } else {
+            // NINGUNO (Selección vacía o inválida)
+            $('#divMetodoPago').hide();
+            $('#divPlazoCredito').hide();
+        }
+    });
+
+// =======================================================
+//  CÁLCULO AUTOMÁTICO DE FECHA DE VENCIMIENTO
+// =======================================================
+
+    // Escuchar cambios en los Días o en la Fecha de Emisión
+    $('#inputDiasCredito, #fecha_emision').on('input change', function() {
+        calcularVencimiento();
+    });
+
+    function calcularVencimiento() {
+        let dias = parseInt($('#inputDiasCredito').val()) || 0;
+        let fechaEmisionStr = $('#fecha_emision').val(); // Viene como YYYY-MM-DD
+        
+        if (fechaEmisionStr && dias > 0) {
+            // Truco para evitar problemas de zona horaria: agregar T00:00:00
+            let fecha = new Date(fechaEmisionStr + 'T00:00:00'); 
+            
+            // Sumar los días
+            fecha.setDate(fecha.getDate() + dias);
+            
+            // Formatear para mostrar al usuario (DD/MM/YYYY)
+            let dia = String(fecha.getDate()).padStart(2, '0');
+            let mes = String(fecha.getMonth() + 1).padStart(2, '0');
+            let anio = fecha.getFullYear();
+            
+            $('#txtVencimientoCalculado').text(`${dia}/${mes}/${anio}`);
+            
+            // Formatear para guardar en BD (YYYY-MM-DD)
+            $('#inputFechaVencimiento').val(`${anio}-${mes}-${dia}`);
+            
+        } else {
+            $('#txtVencimientoCalculado').text('--/--/----');
+            $('#inputFechaVencimiento').val('');
+        }
+    }
+
+    // Llamar al inicio
+    cargarMetodosPago();
 
 });

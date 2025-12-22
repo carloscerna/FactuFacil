@@ -1,0 +1,207 @@
+{# views/compras/CuentasPorPagar.html #}
+{% extends 'default_layout.html' %}
+
+{% block estilos %}
+{{ parent() }}
+<style>
+    /* --- ESTILOS PASTEL & GRADIENTES --- */
+    
+    /* KPI: Facturas Pendientes (Azul Cielo) */
+    .card-kpi-blue {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border: none;
+        transition: transform 0.2s;
+    }
+    
+    /* KPI: Por Vencer (Naranja Suave) */
+    .card-kpi-warning {
+        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+        border: none;
+        transition: transform 0.2s;
+    }
+    
+    /* KPI: Deuda Total (Rosa/Rojo Suave) */
+    .card-kpi-danger {
+        background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 100%);
+        border: none;
+        transition: transform 0.2s;
+    }
+
+    .card-kpi-blue:hover, .card-kpi-warning:hover, .card-kpi-danger:hover {
+        transform: translateY(-3px);
+    }
+
+    /* Modal Header Gradiente */
+    .modal-header-pastel {
+        background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+    }
+
+    /* Tabla Header */
+    .table-header-soft {
+        background-color: #f8f9fa;
+        color: #6c757d;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+</style>
+{% endblock %}
+
+{% block contenidos %}
+<div class="content-wrapper px-4 pt-4">
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-secondary mb-0">
+                <i class="fas fa-money-check-alt me-2 text-primary"></i>Cuentas por Pagar
+            </h2>
+            <p class="text-muted small mb-0">Gestión de deudas a proveedores y registro de abonos</p>
+        </div>
+        <button class="btn btn-outline-primary rounded-pill shadow-sm" onclick="tablaPagos.ajax.reload()">
+            <i class="fas fa-sync-alt me-1"></i> Actualizar Lista
+        </button>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card card-kpi-blue shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="bg-white p-3 rounded-circle text-primary me-3 shadow-sm">
+                        <i class="fas fa-file-invoice-dollar fa-2x"></i>
+                    </div>
+                    <div>
+                        <p class="mb-0 small text-uppercase fw-bold text-primary opacity-75">Facturas Pendientes</p>
+                        <h3 class="fw-bold text-dark mb-0" id="kpiFacturas">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card card-kpi-warning shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="bg-white p-3 rounded-circle text-warning me-3 shadow-sm">
+                        <i class="fas fa-clock fa-2x"></i>
+                    </div>
+                    <div>
+                        <p class="mb-0 small text-uppercase fw-bold text-warning opacity-75">Por Vencer (7 días)</p>
+                        <h3 class="fw-bold text-dark mb-0" id="kpiVencimiento">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card card-kpi-danger shadow-sm h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="bg-white p-3 rounded-circle text-danger me-3 shadow-sm">
+                        <i class="fas fa-hand-holding-usd fa-2x"></i>
+                    </div>
+                    <div>
+                        <p class="mb-0 small text-uppercase fw-bold text-danger opacity-75">Deuda Total</p>
+                        <h3 class="fw-bold text-dark mb-0">$ <span id="kpiTotalDeuda">0.00</span></h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-lg rounded-3 mb-5">
+        <div class="card-header bg-white border-bottom py-3 d-flex align-items-center">
+            <h5 class="mb-0 text-muted flex-grow-1"><i class="fas fa-list me-2"></i>Facturas con Saldo Pendiente</h5>
+            </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table id="tablaPagos" class="table table-hover align-middle mb-0" style="width:100%">
+                    <thead class="table-header-soft">
+                        <tr>
+                            <th class="ps-4">Emisión</th>
+                            <th>Documento</th>
+                            <th>Proveedor</th>
+                            <th>Vencimiento</th>
+                            <th class="text-end">Total Original</th>
+                            <th class="text-end text-danger">Saldo Pendiente</th>
+                            <th class="text-center">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="modalPagar" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg overflow-hidden">
+            <div class="modal-header modal-header-pastel border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-check-circle me-2"></i>Registrar Abono</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body p-4 bg-light">
+                <form id="formPagar">
+                    <input type="hidden" id="pagoIdCompra" name="id_compra">
+                    
+                    <div class="text-center mb-4 p-3 bg-white rounded shadow-sm border">
+                        <p class="text-muted mb-1 small text-uppercase">Pagando factura de</p>
+                        <h5 class="fw-bold text-dark mb-2" id="lblProveedor">Proveedor XYZ</h5>
+                        <div class="d-flex justify-content-center align-items-center gap-2">
+                            <span class="badge bg-secondary">Doc: <span id="lblDocumento">---</span></span>
+                            <span class="badge bg-danger rounded-pill px-3">Saldo Actual: $ <span id="lblSaldo">0.00</span></span>
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-uppercase text-muted">Origen del Dinero (Banco/Caja)</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-0 text-primary"><i class="fas fa-university"></i></span>
+                                <select class="form-select border-0 shadow-sm" id="pagoCuenta" name="id_cuenta_tesoreria" required>
+                                    <option value="">Cargando cuentas...</option>
+                                    </select>
+                            </div>
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label small fw-bold text-uppercase text-muted">Fecha Pago</label>
+                            <input type="date" class="form-control border-0 shadow-sm" name="fecha_pago" value="{{ "now"|date("Y-m-d") }}" required>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold text-uppercase text-muted">Monto a Abonar</label>
+                            <div class="input-group shadow-sm">
+                                <span class="input-group-text border-0 bg-white text-success fw-bold">$</span>
+                                <input type="number" step="0.01" class="form-control border-0 fw-bold text-success" id="pagoMonto" name="monto" required>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label small fw-bold text-uppercase text-muted">Referencia / Cheque / Nota</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-0 text-muted"><i class="fas fa-pen"></i></span>
+                                <input type="text" class="form-control border-0 shadow-sm" name="referencia" placeholder="Ej: Cheque 12345, Transferencia #999" required>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="modal-footer border-0 bg-white d-flex justify-content-between">
+                <button type="button" class="btn btn-light text-muted rounded-pill" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary px-4 rounded-pill shadow-sm" id="btnConfirmarPago">
+                    <i class="fas fa-paper-plane me-2"></i>Confirmar Pago
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="./js/compras/pagos.js"></script>
+{% endblock %}

@@ -102,33 +102,62 @@ switch ($accion) {
 case 'guardarCompra':
         $pdo->beginTransaction();
         try {
-            // Decodificar datos que vienen del formulario manual
+         // Decodificar datos que vienen del formulario manual
             $datos_cabecera = json_decode($_POST['compra_cabecera'], true);
-            $datos_detalle = json_decode($_POST['compra_detalle'], true);
+            $datos_detalle  = json_decode($_POST['compra_detalle'], true);
 
+            // --- 1. PREPARACIÓN DE VARIABLES DE CRÉDITO Y VENCIMIENTO ---
+            $fecha_emision  = $datos_cabecera['fecha_emision'];
+            $condicion_pago = $datos_cabecera['condicion_pago']; // 1: Contado, 2: Crédito
             
-        // 1. Insertar Encabezado de Compra (CORREGIDO SEGÚN TU TABLA)
+            // Extraemos los nuevos datos del JSON (si vienen vacíos, ponemos defaults)
+            $dias_credito = intval($datos_cabecera['dias_credito'] ?? 0);
+            $fecha_venc   = $datos_cabecera['fecha_vencimiento'] ?? null;
+
+            // Lógica: Si es Crédito (2) y la fecha viene vacía, la calculamos aquí mismo
+            if ($condicion_pago == '2') {
+                if (empty($fecha_venc)) {
+                    // Si no hay fecha ni días, asumimos 30 días por defecto
+                    $dias_calc = ($dias_credito > 0) ? $dias_credito : 30; 
+                    // Si días era 0, lo actualizamos a 30 para guardarlo bien
+                    if($dias_credito == 0) $dias_credito = 30; 
+                    
+                    $fecha_venc = date('Y-m-d', strtotime($fecha_emision . " + $dias_calc days"));
+                }
+            } else {
+                // Si es Contado, limpiamos estos campos para que no quede basura en la BD
+                $dias_credito = 0;
+                $fecha_venc   = null;
+            }
+
+            // --- 2. INSERTAR ENCABEZADO DE COMPRA (ACTUALIZADO) ---
+            // Se agregaron las columnas: dias_credito, fecha_vencimiento
             $sql_cab = "INSERT INTO compras_cabecera 
                 (codigo_institucion, numero_documento, id_proveedores, fecha_emision, tipo_documento, 
-                 condicion_pago, plazo_pago, total_gravado, total_iva, total_compra, observaciones, fecha_creacion) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) RETURNING id_compra";
+                 condicion_pago, plazo_pago, dias_credito, fecha_vencimiento, 
+                 total_gravado, total_iva, total_compra, observaciones, fecha_creacion) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()) RETURNING id_compra";
             
             $stmt_cab = $pdo->prepare($sql_cab);
             $stmt_cab->execute([
                 $codigo_institucion_sesion,
                 $datos_cabecera['numero_documento'],
-                $datos_cabecera['id_proveedores'], // <--- AQUÍ USAMOS EL ID RELACIONAL
-                $datos_cabecera['fecha_emision'],
-                $datos_cabecera['tipo_documento'], 
-                $datos_cabecera['condicion_pago'],
-                $datos_cabecera['plazo_pago'] ?? null, // Agregué plazo_pago porque lo vi en tu tabla
+                $datos_cabecera['proveedor_id'], // OJO: En tu JS lo llamas 'proveedor_id', verifica si en el array llega como 'id_proveedores' o 'proveedor_id'
+                $fecha_emision,
+                $datos_cabecera['tipo_dte'],     // Verifica si en tu JS es 'tipo_dte' o 'tipo_documento'
+                $condicion_pago,
+                $datos_cabecera['plazo_pago'] ?? '', // Texto libre (opcional)
+                
+                $dias_credito,  // <--- NUEVO CAMPO INT
+                $fecha_venc,    // <--- NUEVO CAMPO DATE
+                
                 $datos_cabecera['total_gravado'],
                 $datos_cabecera['total_iva'],
-                $datos_cabecera['total_pagar'],
+                $datos_cabecera['total_pagar'], // Verifica si es 'total_pagar' o 'total_compra'
                 $datos_cabecera['observaciones'] ?? ''
             ]);
+            
             $id_compra = $stmt_cab->fetchColumn();
-
            // 2. Procesar Detalle de Productos (MANUAL)
             foreach ($datos_detalle as $producto) {
                 
@@ -311,11 +340,20 @@ case 'guardarCompra':
             $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
             $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
 
-            // B. PREPARAR TOTALES (Vienen calculados desde el JS en datos_cabecera)
-            $total_gravado = floatval($datos_cabecera['total_gravado']);
-            $total_iva     = floatval($datos_cabecera['total_iva']);
-            $total_pagar   = floatval($datos_cabecera['total_pagar']);
+           // --- 1. OBTENER Y SANITIZAR TODOS LOS TOTALES ---
+            // Usamos '?? 0' para que si el dato no viene, asuma que es cero y no de error.
+            $total_gravado = floatval($datos_cabecera['total_gravado'] ?? 0);
+            $total_exenta  = floatval($datos_cabecera['total_exenta'] ?? 0);   // <-- Ahora sí la definimos
+            $total_no_suj  = floatval($datos_cabecera['total_no_suj'] ?? 0);   // <-- Ahora sí la definimos
+            $total_iva     = floatval($datos_cabecera['total_iva'] ?? 0);
+            $total_pagar   = floatval($datos_cabecera['total_pagar'] ?? 0);
 
+            // --- 2. CÁLCULO DE MONTO PARA INVENTARIO ---
+            // Ahora la suma funcionará perfecta
+            $monto_inventario = $total_gravado + $total_exenta + $total_no_suj;
+            
+            $monto_iva       = $total_iva;
+            $monto_proveedor = $total_pagar;
             // C. DEFINIR ENCABEZADO DEL ASIENTO
             $datos_encabezado_asiento = [
                 'fechaAsiento'    => $datos_cabecera['fecha_emision'],
@@ -363,6 +401,45 @@ case 'guardarCompra':
                 // Opcional: Si es crítico que exista contabilidad, descomenta la siguiente línea para revertir todo si falla el asiento
                 // throw new Exception("Error al generar asiento contable: " . $resultado_contable['mensaje']);
             }
+
+// --- DETERMINAR LA CUENTA DE SALIDA (HABER) ---
+    $id_cuenta_salida = 0;
+    $condicion_pago = $compra_data['condicion_pago'] ?? '1'; // 1: Contado, 2: Crédito
+    
+    if ($condicion_pago == '2') {
+        // A. ES CRÉDITO -> Usamos Cuentas por Pagar Proveedores
+        $id_cuenta_salida = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+    } else {
+        // B. ES CONTADO -> Buscamos según el Método (Efectivo, Banco, etc.)
+        $forma_pago = $compra_data['forma_pago'] ?? '01'; // Default Efectivo
+        
+        // Buscamos en la tabla de configuración
+        $sql_cuenta = "SELECT id_cuenta_contable FROM configuracion_cuentas_pago 
+                       WHERE codigo_forma_pago = ? AND codigo_institucion = ?";
+        $stmt_c = $pdo->prepare($sql_cuenta);
+        $stmt_c->execute([$forma_pago, $codigo_institucion_sesion]);
+        $res_cuenta = $stmt_c->fetch(PDO::FETCH_ASSOC);
+        
+        if ($res_cuenta) {
+            $id_cuenta_salida = $res_cuenta['id_cuenta_contable'];
+        } else {
+            // FALLBACK: Si no configuraron la cuenta específica, usamos CAJA GENERAL por defecto
+            // O lanza un error si prefieres ser estricto.
+            $id_cuenta_salida = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'CAJA_GENERAL');
+        }
+    }
+
+    // --- CONSTRUIR DETALLE DEL ASIENTO ---
+    $datos_detalle_asiento = [
+        // 1. CARGO: Inventario
+        ['cuenta_id' => $id_inventario, 'debito' => $monto_inventario, 'credito' => 0.00],
+        
+        // 2. CARGO: IVA (si aplica)
+        ['cuenta_id' => $id_iva_credito, 'debito' => $monto_iva, 'credito' => 0.00],
+        
+        // 3. ABONO: Cuenta de Salida (Banco, Caja o Proveedor)
+        ['cuenta_id' => $id_cuenta_salida, 'debito' => 0.00, 'credito' => $monto_proveedor]
+    ];
 
             $pdo->commit();
             echo json_encode(['respuesta' => true, 'mensaje' => 'Compra manual registrada y precios actualizados.']);
@@ -591,6 +668,45 @@ case 'guardarCompra':
                     throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
                 }
 
+            // --- DETERMINAR LA CUENTA DE SALIDA (HABER) ---
+                $id_cuenta_salida = 0;
+                $condicion_pago = $compra_data['condicion_pago'] ?? '1'; // 1: Contado, 2: Crédito
+                
+                if ($condicion_pago == '2') {
+                    // A. ES CRÉDITO -> Usamos Cuentas por Pagar Proveedores
+                    $id_cuenta_salida = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+                } else {
+                    // B. ES CONTADO -> Buscamos según el Método (Efectivo, Banco, etc.)
+                    $forma_pago = $compra_data['forma_pago'] ?? '01'; // Default Efectivo
+                    
+                    // Buscamos en la tabla de configuración
+                    $sql_cuenta = "SELECT id_cuenta_contable FROM configuracion_cuentas_pago 
+                                WHERE codigo_forma_pago = ? AND codigo_institucion = ?";
+                    $stmt_c = $pdo->prepare($sql_cuenta);
+                    $stmt_c->execute([$forma_pago, $codigo_institucion_sesion]);
+                    $res_cuenta = $stmt_c->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($res_cuenta) {
+                        $id_cuenta_salida = $res_cuenta['id_cuenta_contable'];
+                    } else {
+                        // FALLBACK: Si no configuraron la cuenta específica, usamos CAJA GENERAL por defecto
+                        // O lanza un error si prefieres ser estricto.
+                        $id_cuenta_salida = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'CAJA_GENERAL');
+                    }
+                }
+
+                // --- CONSTRUIR DETALLE DEL ASIENTO ---
+                $datos_detalle_asiento = [
+                    // 1. CARGO: Inventario
+                    ['cuenta_id' => $id_inventario, 'debito' => $monto_inventario, 'credito' => 0.00],
+                    
+                    // 2. CARGO: IVA (si aplica)
+                    ['cuenta_id' => $id_iva_credito, 'debito' => $monto_iva, 'credito' => 0.00],
+                    
+                    // 3. ABONO: Cuenta de Salida (Banco, Caja o Proveedor)
+                    ['cuenta_id' => $id_cuenta_salida, 'debito' => 0.00, 'credito' => $monto_proveedor]
+                ];
+                
                 // =============================
                 // FINAL DE LA TRANSACCIÓN
                 // =============================
@@ -647,20 +763,61 @@ case 'guardarCompra':
             $proveedor_id = $pdo->lastInsertId('proveedores_id_proveedores_seq');
         }
 
-        // 2. Insertar cabecera con resumen completo
+        // =================================================================================
+        // 3. PREPARACIÓN DE CONDICIONES DE PAGO (LÓGICA PRIORITARIA)
+        // =================================================================================
+        // Definimos la fecha de emisión desde el JSON para los cálculos
+        $fecha_emision = $compra_data['fecha_emision'];
+
+        // A. Condición de Pago: 
+        // PRIORIDAD 1: Lo que viene en el $_POST (lo que seleccionaste en el select)
+        // PRIORIDAD 2: Lo que dice el JSON (resumen -> condicionOperacion)
+        // PRIORIDAD 3: Por defecto '1' (Contado)
+        $condicion_pago = $_POST['condicion_pago'] ?? $compra_data['resumen']['condicionOperacion'] ?? '1';
+
+        // B. Días y Vencimiento:
+        $dias_credito = intval($_POST['dias_credito'] ?? 0);
+        $fecha_venc   = $_POST['fecha_vencimiento'] ?? null;
+
+        // C. Cálculo Automático (Si es Crédito):
+        if ($condicion_pago == '2') {
+            if (empty($fecha_venc)) {
+                // Si el usuario no mandó fecha (o el JS falló), calculamos en PHP
+                $dias_calc = ($dias_credito > 0) ? $dias_credito : 30; // Default 30 días
+                
+                // Si venía en 0, lo forzamos a 30 para guardar el dato correcto
+                if ($dias_credito == 0) $dias_credito = 30;
+
+                $fecha_venc = date('Y-m-d', strtotime($fecha_emision . " + $dias_calc days"));
+            }
+        } else {
+            // Si es Contado, limpiamos para no ensuciar la BD
+            $dias_credito = 0;
+            $fecha_venc   = null;
+        }
+
+        // =================================================================================
+        // 4. INSERTAR CABECERA (ACTUALIZADO CON NUEVOS CAMPOS)
+        // =================================================================================
         $sql_cabecera = "INSERT INTO compras_cabecera (
                 codigo_institucion, numero_documento, tipo_documento, fecha_emision,
-                id_proveedores, condicion_pago, observaciones,
-                total_no_suj, total_exenta, total_gravada, total_iva, total_descuento, total_compra, tipo_dte, sello_recibido, firma_electronica
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                id_proveedores, condicion_pago, dias_credito, fecha_vencimiento, observaciones,
+                total_no_suj, total_exenta, total_gravada, total_iva, total_descuento, total_compra, 
+                tipo_dte, sello_recibido, firma_electronica, fecha_creacion
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+            
         $stmt_cabecera = $pdo->prepare($sql_cabecera);
         $stmt_cabecera->execute([
             $codigo_institucion_sesion,
             $compra_data['numero_control'],
             $compra_data['tipo_dte'],
-            $compra_data['fecha_emision'],
+            $fecha_emision,
             $proveedor_id,
-            $compra_data['tipo_operacion'],
+            
+            $condicion_pago, // <--- Ahora usa tu selección manual si existe
+            $dias_credito,   // <--- NUEVO
+            $fecha_venc,     // <--- NUEVO
+            
             $compra_data['observaciones'] ?? null,
             $compra_data['resumen']['total_no_suj'] ?? 0,
             $compra_data['resumen']['total_exenta'] ?? 0,
@@ -672,6 +829,7 @@ case 'guardarCompra':
             $compra_data['sello_recibido'] ?? null,
             $compra_data['firma_electronica'] ?? null
         ]);
+        
         $id_compra = $pdo->lastInsertId('compras_cabecera_id_compra_seq');
 
       // 3. Procesar productos
@@ -1571,7 +1729,11 @@ case 'guardarCompra':
                     ]);
                 }
                 break;
-
+// --- NUEVO CASE PARA LLENAR EL SELECT ---
+    case 'obtenerMetodosPago':
+        $stmt = $pdo->query("SELECT codigo, descripcion FROM cat_017_forma_pago ORDER BY codigo ASC");
+        echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        break;
 
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);

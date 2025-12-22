@@ -18,7 +18,7 @@ $tabla = $_POST['tabla'] ?? $_GET['tabla'] ?? '';
 
 // Array de tablas permitidas para el mantenimiento
 $tablas_permitidas = [
-    'cat_001', 'cat_002', 'cat_003', 'cat_004', 'cat_005', 'cat_006', 'cat_007', 'cat_008', 'cat_009', 'cat_010', 'cat_011', 'cat_012', 'cat_013', 'cat_014', 'cat_015', 'cat_016', 'cat_017', 'cat_018', 'cat_019', 'cat_020', 'cat_021', 'cat_022', 'cat_023', 'cat_024', 'cat_025', 'cat_026', 'cat_027', 'cat_028', 'cat_029', 'cat_030', 'cat_031', 'cat_032',
+    'cat_001', 'cat_002', 'cat_003', 'cat_004', 'cat_005', 'cat_006', 'cat_007', 'cat_008', 'cat_009', 'cat_010', 'cat_011', 'cat_012', 'cat_013', 'cat_014', 'cat_015', 'cat_016', 'cat_017_forma_pago', 'cat_018', 'cat_019', 'cat_020', 'cat_021', 'cat_022', 'cat_023', 'cat_024', 'cat_025', 'cat_026', 'cat_027', 'cat_028', 'cat_029', 'cat_030', 'cat_031', 'cat_032',
     'catalogo_categoria', 'catalogo_ganancia'
 ];
 
