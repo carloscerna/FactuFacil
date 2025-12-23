@@ -142,9 +142,9 @@ case 'guardarCompra':
             $stmt_cab->execute([
                 $codigo_institucion_sesion,
                 $datos_cabecera['numero_documento'],
-                $datos_cabecera['proveedor_id'], // OJO: En tu JS lo llamas 'proveedor_id', verifica si en el array llega como 'id_proveedores' o 'proveedor_id'
+                $datos_cabecera['id_proveedores'], // OJO: En tu JS lo llamas 'proveedor_id', verifica si en el array llega como 'id_proveedores' o 'proveedor_id'
                 $fecha_emision,
-                $datos_cabecera['tipo_dte'],     // Verifica si en tu JS es 'tipo_dte' o 'tipo_documento'
+                $datos_cabecera['tipo_documento'],     // Verifica si en tu JS es 'tipo_dte' o 'tipo_documento'
                 $condicion_pago,
                 $datos_cabecera['plazo_pago'] ?? '', // Texto libre (opcional)
                 

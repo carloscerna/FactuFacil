@@ -7,7 +7,7 @@ REM ============================================================
 
 REM === CONFIGURACIÓN INICIAL ===
 SET OLD_PG_PATH=C:\Program Files\PostgreSQL\15\bin
-SET NEW_PG_PATH=C:\Program Files\PostgreSQL\9.11\bin
+SET NEW_PG_PATH=C:\Program Files\PostgreSQL\15\bin
 SET BACKUP_PATH=C:\respaldos
 SET PGUSER=postgres
 SET PGPASSWORD=Orellana

@@ -528,7 +528,13 @@ $('#btnDte').on('click', function() {
             datosDeEnvio = {
                 accion: accionDeGuardado,
                 compra_data: JSON.stringify(compraEncabezadoDte),
-                productos_data: JSON.stringify(productosCompra)
+                productos_data: JSON.stringify(productosCompra),
+                // --- AGREGAMOS ESTOS 3 CAMPOS PARA RESPETAR TU SELECCIÓN MANUAL ---
+                condicion_pago: $('#selectCondicionPago').val(),
+                dias_credito: $('#inputDiasCredito').val(),
+                fecha_vencimiento: $('#inputFechaVencimiento').val()
+                // ------------------------------------------------------------------
+
             };
         } 
         // ---------------------------------------------------------
@@ -1230,42 +1236,73 @@ $('#formSubirDte').submit(function(e) {
             $('#divPlazoCredito').hide();
         }
     });
-
 // =======================================================
-//  CÁLCULO AUTOMÁTICO DE FECHA DE VENCIMIENTO
+//  CÁLCULO AUTOMÁTICO DE VENCIMIENTO (CORREGIDO)
 // =======================================================
 
-    // Escuchar cambios en los Días o en la Fecha de Emisión
-    $('#inputDiasCredito, #fecha_emision').on('input change', function() {
+$(document).ready(function() {
+    
+    // 1. Escuchar eventos: al escribir (keyup), al cambiar (change) o al pegar (input)
+    $('#inputDiasCredito, #fecha_emision').on('keyup change input', function() {
         calcularVencimiento();
     });
 
-    function calcularVencimiento() {
-        let dias = parseInt($('#inputDiasCredito').val()) || 0;
-        let fechaEmisionStr = $('#fecha_emision').val(); // Viene como YYYY-MM-DD
-        
-        if (fechaEmisionStr && dias > 0) {
-            // Truco para evitar problemas de zona horaria: agregar T00:00:00
-            let fecha = new Date(fechaEmisionStr + 'T00:00:00'); 
-            
-            // Sumar los días
-            fecha.setDate(fecha.getDate() + dias);
-            
-            // Formatear para mostrar al usuario (DD/MM/YYYY)
-            let dia = String(fecha.getDate()).padStart(2, '0');
-            let mes = String(fecha.getMonth() + 1).padStart(2, '0');
-            let anio = fecha.getFullYear();
-            
-            $('#txtVencimientoCalculado').text(`${dia}/${mes}/${anio}`);
-            
-            // Formatear para guardar en BD (YYYY-MM-DD)
-            $('#inputFechaVencimiento').val(`${anio}-${mes}-${dia}`);
-            
-        } else {
-            $('#txtVencimientoCalculado').text('--/--/----');
-            $('#inputFechaVencimiento').val('');
+    // 2. También recalcular si cambiamos de Contado a Crédito
+    $('#selectCondicionPago').on('change', function() {
+        if($(this).val() == '2') {
+            // Esperar un poquito a que se muestre el campo
+            setTimeout(calcularVencimiento, 100);
         }
+    });
+
+});
+
+function calcularVencimiento() {
+    // A. Obtener valores
+    let diasStr = $('#inputDiasCredito').val();
+    let fechaEmisionStr = $('#fecha_emision').val(); // Formato esperado: YYYY-MM-DD
+
+    console.log("Calculando... Días:", diasStr, "Fecha Emisión:", fechaEmisionStr);
+
+    // B. Validar que tengamos datos
+    let dias = parseInt(diasStr);
+    
+    // Si no hay fecha de emisión, usar la de hoy por defecto para el cálculo visual
+    if (!fechaEmisionStr) {
+        let hoy = new Date();
+        fechaEmisionStr = hoy.toISOString().split('T')[0];
+        // Opcional: llenar el campo de fecha emisión si está vacío
+        // $('#fecha_emision').val(fechaEmisionStr);
     }
+
+    if (fechaEmisionStr && dias > 0) {
+        // C. Crear objetos de fecha
+        // Truco 'T12:00:00' para evitar problemas de zona horaria que resten un día
+        let fecha = new Date(fechaEmisionStr + 'T12:00:00'); 
+        
+        // D. Sumar los días
+        fecha.setDate(fecha.getDate() + dias);
+        
+        // E. Formatear salida (DD/MM/YYYY para el usuario)
+        let dia = String(fecha.getDate()).padStart(2, '0');
+        let mes = String(fecha.getMonth() + 1).padStart(2, '0');
+        let anio = fecha.getFullYear();
+        
+        // Formato para BD (YYYY-MM-DD)
+        let fechaBD = `${anio}-${mes}-${dia}`;
+        
+        // F. Actualizar Pantalla
+        $('#txtVencimientoCalculado').text(`${dia}/${mes}/${anio}`).removeClass('text-muted').addClass('text-primary');
+        $('#inputFechaVencimiento').val(fechaBD);
+        
+        console.log("Nuevo Vencimiento:", fechaBD);
+
+    } else {
+        // G. Limpiar si faltan datos
+        $('#txtVencimientoCalculado').text('--/--/----').addClass('text-muted');
+        $('#inputFechaVencimiento').val('');
+    }
+}
 
     // Llamar al inicio
     cargarMetodosPago();
