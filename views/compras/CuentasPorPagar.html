@@ -59,9 +59,14 @@
             </h2>
             <p class="text-muted small mb-0">Gestión de deudas a proveedores y registro de abonos</p>
         </div>
-        <button class="btn btn-outline-primary rounded-pill shadow-sm" onclick="tablaPagos.ajax.reload()">
-            <i class="fas fa-sync-alt me-1"></i> Actualizar Lista
-        </button>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary rounded-pill shadow-sm" data-bs-toggle="modal" data-bs-target="#modalHistorial">
+                <i class="fas fa-history me-1"></i> Ver Historial
+            </button>
+            <button class="btn btn-outline-primary rounded-pill shadow-sm" onclick="tablaPagos.ajax.reload()">
+                <i class="fas fa-sync-alt me-1"></i> Actualizar
+            </button>
+        </div>
     </div>
 
     <div class="row g-3 mb-4">
@@ -199,6 +204,63 @@
         </div>
     </div>
 </div>
+
+
+<div class="modal fade" id="modalHistorial" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered"> <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-light">
+                <h5 class="modal-title fw-bold text-secondary"><i class="fas fa-history me-2"></i>Historial de Abonos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="row g-2 mb-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-muted">Desde:</label>
+                        <input type="date" id="filtroFechaInicio" class="form-control form-control-sm shadow-sm">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-muted">Hasta:</label>
+                        <input type="date" id="filtroFechaFin" class="form-control form-control-sm shadow-sm">
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-primary btn-sm w-100 shadow-sm" id="btnFiltrarFechas">
+                            <i class="fas fa-search me-1"></i> Filtrar
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                         <button class="btn btn-outline-secondary btn-sm w-100 shadow-sm" id="btnLimpiarFiltros">
+                            <i class="fas fa-eraser me-1"></i> Limpiar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table id="tablaHistorial" class="table table-striped table-hover mb-0" style="width:100%">
+                        <thead class="bg-primary text-white text-uppercase small">
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Proveedor</th>
+                                <th>Doc.</th>
+                                <th>Cuenta/Banco</th>
+                                <th>Ref.</th>
+                                <th class="text-end">Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr class="bg-light fw-bold">
+                                <td colspan="5" class="text-end">TOTAL FILTRADO:</td>
+                                <td class="text-end" id="totalHistorial">$ 0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block javascripts %}

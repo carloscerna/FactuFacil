@@ -71,97 +71,91 @@ switch ($accion) {
         break;
 
     case 'obtenerCuentasTesoreria':
-        // Llenar el select del modal con Bancos y Cajas
         try {
+            // Consulta para traer bancos y cajas activos
             $sql = "SELECT id, nombre_cuenta, tipo_cuenta, saldo_actual 
                     FROM tesoreria_cuentas 
                     WHERE codigo_institucion = ? AND estado = 'ACTIVO'";
+            
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$codigo_institucion_sesion]);
-            echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+            $resultado = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // IMPORTANTE: Devolver JSON puro
+            echo json_encode($resultado);
+            
         } catch (Exception $e) {
-            echo json_encode([]);
+            // Si falla, devolvemos array vacío
+            echo json_encode([]); 
         }
         break;
 
-    case 'guardarAbono':
+  case 'guardarAbono':
         try {
+            // Validar datos mínimos
+            if (empty($_POST['id_compra']) || empty($_POST['monto'])) {
+                throw new Exception("Datos incompletos.");
+            }
+
             $pdo->beginTransaction();
 
             $id_compra = $_POST['id_compra'];
             $monto     = floatval($_POST['monto']);
-            $id_cuenta = $_POST['id_cuenta_tesoreria']; // ID de tesoreria_cuentas
-            $ref       = $_POST['referencia'];
+            $id_cuenta = $_POST['id_cuenta_tesoreria']; 
+            $ref       = $_POST['referencia'] ?? '';
             $fecha     = $_POST['fecha_pago'];
 
-            // 1. Validaciones
-            if ($monto <= 0) throw new Exception("El monto debe ser mayor a 0");
+            // 1. Insertar Historial de Pago
+            $sql_hist = "INSERT INTO compras_pagos (id_compra, fecha_pago, monto_abonado, referencia_pago, id_cuenta_tesoreria, usuario_registro)
+                         VALUES (?, ?, ?, ?, ?, ?)";
+            $stmt = $pdo->prepare($sql_hist);
+            $stmt->execute([$id_compra, $fecha, $monto, $ref, $id_cuenta, $usuario_activo]);
 
-            // 2. Obtener datos de la cuenta de tesorería (para saber su cuenta contable y validar saldo)
-            $stmt = $pdo->prepare("SELECT id_cuenta_contable, nombre_cuenta, saldo_actual FROM tesoreria_cuentas WHERE id = ?");
-            $stmt->execute([$id_cuenta]);
-            $cuenta_tesoreria = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!$cuenta_tesoreria) throw new Exception("Cuenta de tesorería no válida");
-
-            // Opcional: Validar si hay saldo suficiente en Banco/Caja
-            /*
-            if (floatval($cuenta_tesoreria['saldo_actual']) < $monto) {
-                throw new Exception("Saldo insuficiente en " . $cuenta_tesoreria['nombre_cuenta']);
-            }
-            */
-
-            // 3. Obtener datos de la compra (para saber el proveedor y documento)
-            $stmt = $pdo->prepare("SELECT numero_documento, id_proveedores FROM compras_cabecera WHERE id_compra = ?");
-            $stmt->execute([$id_compra]);
-            $datos_compra = $stmt->fetch(PDO::FETCH_ASSOC);
-
-            // 4. GENERAR ASIENTO CONTABLE
-            // CARGO (Debe): Proveedores (Disminuye deuda 2101)
-            // ABONO (Haber): Banco/Caja (Sale dinero 1101/1102)
-            
-            // Buscar ID cuenta proveedor (Usando función de contabilidad_api.php si existe, o query directa)
-            // Asumimos cuenta proveedores estándar. Si tienes mapeo específico por proveedor, ajústalo aquí.
-            $stmt = $pdo->prepare("SELECT id FROM cuentas_contables WHERE codigo LIKE '2101%' AND codigo_institucion = ? LIMIT 1"); 
-            $stmt->execute([$codigo_institucion_sesion]);
-            $id_cuenta_proveedor = $stmt->fetchColumn();
-            
-            if (!$id_cuenta_proveedor) throw new Exception("No se encontró la cuenta contable de Proveedores (2101...)");
-
-            // a) Insertar Cabecera Asiento
-            $sql_asiento = "INSERT INTO asientos_contables (codigo_institucion, numero_asiento, fecha_asiento, concepto, tipo_asiento, estado, usuario_registro) 
-                            VALUES (?, (SELECT COALESCE(MAX(numero_asiento),0)+1 FROM asientos_contables WHERE codigo_institucion = ?), ?, ?, 'Egreso', 'APROBADO', ?) RETURNING id";
-            $stmt_as = $pdo->prepare($sql_asiento);
-            $concepto = "Pago a Fac. " . $datos_compra['numero_documento'] . " Ref: " . $ref;
-            $stmt_as->execute([$codigo_institucion_sesion, $codigo_institucion_sesion, $fecha, $concepto, $usuario_activo]);
-            $id_asiento = $stmt_as->fetchColumn();
-
-            // b) Insertar Detalles Asiento
-            // A. Cargo a Proveedor (Debe)
-            $pdo->prepare("INSERT INTO detalle_asientos (asiento_id, cuenta_id, debito, credito) VALUES (?, ?, ?, 0)")
-                ->execute([$id_asiento, $id_cuenta_proveedor, $monto]);
-            
-            // B. Abono a Banco/Caja (Haber)
-            $pdo->prepare("INSERT INTO detalle_asientos (asiento_id, cuenta_id, debito, credito) VALUES (?, ?, 0, ?)")
-                ->execute([$id_asiento, $cuenta_tesoreria['id_cuenta_contable'], $monto]);
-
-            // 5. REGISTRAR EN HISTORIAL DE PAGOS
-            $sql_hist = "INSERT INTO compras_pagos (id_compra, fecha_pago, monto_abonado, referencia_pago, id_cuenta_tesoreria, id_asiento, usuario_registro)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)";
-            $pdo->prepare($sql_hist)->execute([$id_compra, $fecha, $monto, $ref, $id_cuenta, $id_asiento, $usuario_activo]);
-
-            // 6. ACTUALIZAR SALDO EN TABLA TESORERÍA
-            $pdo->prepare("UPDATE tesoreria_cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?")
-                ->execute([$monto, $id_cuenta]);
+            // 2. Actualizar Saldo en Tesorería (Resta el dinero)
+            $sql_upd = "UPDATE tesoreria_cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?";
+            $pdo->prepare($sql_upd)->execute([$monto, $id_cuenta]);
 
             $pdo->commit();
-            echo json_encode(['respuesta' => true, 'mensaje' => 'Pago registrado y contabilizado correctamente.']);
+            
+            // IMPORTANTE: Esto es lo que recibe el JS
+            echo json_encode(['respuesta' => true, 'mensaje' => 'Pago registrado correctamente.']);
 
         } catch (Exception $e) {
             $pdo->rollBack();
-            echo json_encode(['respuesta' => false, 'mensaje' => 'Error: ' . $e->getMessage()]);
+            echo json_encode(['respuesta' => false, 'mensaje' => $e->getMessage()]);
         }
         break;
-        
+        case 'listarHistorialPagos':
+                try {
+                    // VERIFICACIÓN DE COLUMNAS:
+                    // Asegúrate que en tu tabla 'compras_pagos' la llave primaria se llame 'id' o 'id_pago'.
+                    // Aquí asumo que se llama 'id' basado en tu mensaje anterior.
+                    
+                    $sql = "SELECT 
+                                p.fecha_pago,
+                                pr.nombre_empresa, 
+                                c.numero_documento,
+                                p.monto_abonado,
+                                p.referencia_pago,
+                                COALESCE(t.nombre_cuenta, 'Sin cuenta') as banco
+                            FROM compras_pagos p
+                            INNER JOIN compras_cabecera c ON p.id_compra = c.id_compra
+                            INNER JOIN proveedores pr ON c.id_proveedores = pr.id_proveedores
+                            LEFT JOIN tesoreria_cuentas t ON p.id_cuenta_tesoreria = t.id
+                            WHERE c.codigo_institucion = ?
+                            ORDER BY p.id DESC"; 
+                    
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute([$codigo_institucion_sesion]);
+                    $historial = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    echo json_encode(['data' => $historial]);
+
+                } catch (Exception $e) {
+                    // AHORA SÍ VEREMOS EL ERROR
+                    echo json_encode(['data' => [], 'error' => $e->getMessage()]);
+                }
+        break;
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida']);
         break;

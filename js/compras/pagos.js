@@ -13,6 +13,116 @@ $(document).ready(function() {
             $('#formPagar')[0].reportValidity();
         }
     });
+
+let tablaHistorialDT;
+
+// 1. EXTENSIÓN DE FILTRO PERSONALIZADO DATATABLES
+$.fn.dataTable.ext.search.push(
+    function(settings, data, dataIndex) {
+        // Solo aplicar filtro a la tabla historial
+        if (settings.nTable.id !== 'tablaHistorial') return true;
+
+        var min = $('#filtroFechaInicio').val();
+        var max = $('#filtroFechaFin').val();
+        var date = data[0]; // La fecha está en la columna 0
+
+        if (
+            (min === "" && max === "") ||
+            (min === "" && date <= max) ||
+            (min <= date && max === "") ||
+            (min <= date && date <= max)
+        ) {
+            return true;
+        }
+        return false;
+    }
+);
+
+// 2. INICIALIZACIÓN DE LA TABLA
+$('#modalHistorial').on('shown.bs.modal', function () {
+    if (tablaHistorialDT) {
+        tablaHistorialDT.ajax.reload();
+        // Resetear filtros visuales al abrir
+        $('#filtroFechaInicio').val('');
+        $('#filtroFechaFin').val('');
+        tablaHistorialDT.draw();
+    } else {
+        tablaHistorialDT = $('#tablaHistorial').DataTable({
+            "ajax": {
+                "url": "admin/compras/crud_pagos.php",
+                "type": "POST",
+                "data": { accion: 'listarHistorialPagos' }
+            },
+            "columns": [
+                { "data": "fecha_pago" },
+                { "data": "nombre_empresa" },
+                { "data": "numero_documento" },
+                { "data": "banco" },
+                { "data": "referencia_pago" },
+                { 
+                    "data": "monto_abonado",
+                    "className": "text-end fw-bold text-success",
+                    "render": function(data) {
+                        return '$ ' + parseFloat(data).toFixed(2);
+                    }
+                }
+            ],
+            "order": [[0, "desc"]],
+            "dom": 'Bfrtip', // Habilitar botones
+            "buttons": [
+                {
+                    extend: 'excelHtml5',
+                    text: '<i class="fas fa-file-excel"></i> Exportar Excel',
+                    className: 'btn btn-success btn-sm',
+                    title: 'Historial_Pagos_Proveedores'
+                },
+                {
+                    extend: 'pdfHtml5',
+                    text: '<i class="fas fa-file-pdf"></i> PDF',
+                    className: 'btn btn-danger btn-sm'
+                }
+            ],
+            "language": {
+                "url": "https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json"
+            },
+            // Calcular Total en el Footer cada vez que se dibuje la tabla
+            "footerCallback": function (row, data, start, end, display) {
+                var api = this.api();
+
+                // Función auxiliar para convertir a número
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ? i : 0;
+                };
+
+                // Calcular total de la página actual (o de todo el filtro)
+                var total = api
+                    .column(5, { page: 'current' }) // Columna 5 es el Monto
+                    .data()
+                    .reduce(function (a, b) {
+                        return intVal(a) + intVal(b);
+                    }, 0);
+
+                // Actualizar el footer
+                $('#totalHistorial').html('$ ' + total.toFixed(2));
+            }
+        });
+    }
+});
+
+// 3. EVENTOS DE LOS BOTONES DE FILTRO
+$('#btnFiltrarFechas').on('click', function() {
+    tablaHistorialDT.draw();
+});
+
+$('#btnLimpiarFiltros').on('click', function() {
+    $('#filtroFechaInicio').val('');
+    $('#filtroFechaFin').val('');
+    tablaHistorialDT.draw();
+});
+
+
 });
 
 function cargarTablaPagos() {
@@ -102,6 +212,13 @@ function cargarCuentasTesoreria() {
         type: 'POST',
         data: { accion: 'obtenerCuentasTesoreria' },
         success: function(response) {
+            // 1. DETECCIÓN INTELIGENTE DE RESPUESTA
+                let resp;
+                
+                // Si jQuery ya lo convirtió en objeto, úsalo directamente.
+                if (typeof response === 'object') {
+                    resp = response; 
+                }
             let cuentas = JSON.parse(response);
             let options = '<option value="">Seleccione Cuenta...</option>';
             cuentas.forEach(c => {
@@ -114,12 +231,38 @@ function cargarCuentasTesoreria() {
 }
 
 function guardarAbono() {
+    // 1. Validaciones básicas
+    if($('#pagoCuenta').val() === '' || $('#pagoMonto').val() === '') {
+        Swal.fire('Atención', 'Seleccione una cuenta y un monto', 'warning');
+        return;
+    }
+
+    // 2. Enviar petición
     $.ajax({
         url: 'admin/compras/crud_pagos.php',
         type: 'POST',
         data: $('#formPagar').serialize() + '&accion=guardarAbono',
+        // dataType: 'json', // <--- Opcional: Si lo pones, jQuery SIEMPRE parsea
         success: function(response) {
-            let resp = JSON.parse(response);
+            console.log("Respuesta Servidor:", response); // Para depurar
+
+            let resp;
+            
+            // --- CORRECCIÓN DEL ERROR DE JSON ---
+            // Verificamos si jQuery ya lo convirtió en Objeto o si sigue siendo Texto
+            if (typeof response === 'object') {
+                resp = response; // Ya es objeto, no hacemos nada
+            } else {
+                try {
+                    resp = JSON.parse(response); // Es texto, lo parseamos
+                } catch (e) {
+                    console.error("Error parseando:", e);
+                    Swal.fire('Error Fatal', 'Respuesta del servidor no válida', 'error');
+                    return;
+                }
+            }
+            // ------------------------------------
+
             if(resp.respuesta) {
                 $('#modalPagar').modal('hide');
                 Swal.fire({
@@ -129,11 +272,16 @@ function guardarAbono() {
                     timer: 2000,
                     showConfirmButton: false
                 });
-                tablaPagos.ajax.reload(); // Recargar tabla para ver el saldo bajar
-                $('#formPagar')[0].reset();
+                
+                tablaPagos.ajax.reload(); // Recargar tabla
+                $('#formPagar')[0].reset(); // Limpiar formulario
             } else {
-                Swal.fire('Error', resp.mensaje, 'error');
+                Swal.fire('Error', resp.mensaje || 'Error desconocido', 'error');
             }
+        },
+        error: function(xhr, status, error) {
+            console.error("Error AJAX:", xhr.responseText);
+            Swal.fire('Error de Conexión', 'No se pudo procesar el pago.', 'error');
         }
     });
 }
