@@ -16,8 +16,8 @@
 
 /* Sección 1: Encabezado (Datos Factura) - Azul Cielo Muy Suave */
 .card-header-info {
-    background-color: #f0f7ff; /* AliceBlue saturado */
-    border: 1px solid #cce5ff;
+    background-color: #adcbed; /* AliceBlue saturado */
+    border: 2px solid #2e2f31;
 }
 .card-header-info .section-header {
     background: linear-gradient(90deg, #e3f2fd 0%, #f0f7ff 100%);
@@ -27,12 +27,12 @@
 
 /* Sección 2: Productos (Acción) - Azul Hielo/Grisáceo para contraste */
 .card-products-action {
-    background-color: #f8fbff;
+    background-color: #a2bef6;
     border: 1px solid #d6e9f9;
     border-left: 5px solid #0d6efd; /* Borde izquierdo fuerte para indicar acción */
 }
 .card-products-action .section-header {
-    background-color: #eaf4fc;
+    background-color: #92c3ec;
     color: #055160;
     font-weight: bold;
 }
@@ -191,7 +191,7 @@
         <div id="seccionManual" class="animate__animated animate__fadeIn">
           <form id="formCompra">
             
-            <div class="section-card">
+            <div class="section-card card-header-info">
                 <div class="section-header">
                     <i class="fas fa-file-invoice-dollar"></i> Datos de la Factura
                 </div>
@@ -207,13 +207,15 @@
                         </div>
                         <div class="col-12 col-md-4">
                             <label class="form-label text-muted small text-uppercase fw-bold">Fecha Emisión</label>
-                            <input type="date" class="form-control" name="fecha_emision" value="{{ "now"|date("Y-m-d") }}" required>
+                            <input type="date" class="form-control" id="fecha_emision" name="fecha_emision" value="{{ 'now'|date('Y-m-d') }}" required>
                         </div>
+
                         <div class="col-12 col-md-6">
                             <label class="form-label text-muted small text-uppercase fw-bold">Proveedor</label>
                             <select class="form-select" id="selectProveedor" name="id_proveedores" required></select>
                         </div>
-                       <div class="col-12 col-md-3">
+                        
+                        <div class="col-12 col-md-3">
                             <label class="form-label text-muted small text-uppercase fw-bold">Condición</label>
                             <select class="form-select" id="selectCondicionPago" name="condicion_pago" required>
                                 <option value="1">Contado</option>
@@ -227,7 +229,15 @@
                             <select class="form-select" id="selectFormaPago" name="forma_pago">
                                 </select>
                         </div>
-                        
+
+                        <div class="col-12 col-md-3" id="divCuentaOrigen" style="display:none;">
+                            <label class="form-label text-muted small text-uppercase fw-bold text-primary">
+                                <i class="fas fa-wallet"></i> Pagar desde:
+                            </label>
+                            <select class="form-select" id="selectCuentaOrigen" name="cuenta_origen">
+                                </select>
+                            <div style="font-size: 10px; color: #6c757d;">Se descontará del saldo.</div>
+                        </div>
                         <div id="divPlazoCredito" style="display: none;" class="col-md-3 mb-3">
                             <label class="form-label fw-bold text-primary">Días de Crédito</label>
                             <div class="input-group">
@@ -239,6 +249,7 @@
                             <input type="hidden" id="inputFechaVencimiento" name="fecha_vencimiento">
                             <small class="text-muted" style="font-size: 0.8em;">Vence: <span id="txtVencimientoCalculado" class="fw-bold text-dark">--/--/----</span></small>
                         </div>
+
                         <div class="col-12">
                             <input type="text" class="form-control form-control-sm border-0 bg-light" name="observaciones" placeholder="Agregar observaciones o notas adicionales aquí...">
                         </div>
@@ -246,7 +257,7 @@
                 </div>
             </div>
 
-            <div class="section-card">
+            <div class="section-card card-products-action">
                 <div class="section-header">
                     <i class="fas fa-box-open"></i> Detalle de Productos
                 </div>

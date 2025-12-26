@@ -418,3 +418,41 @@ function cargarResumenSaldos() {
 // Agrega cargarResumenSaldos() dentro del "then" de guardar_prestamo 
 // y pagar_cuota para que los números se actualicen en tiempo real 
 // cuando hagas un movimiento.
+
+// --- NUEVO: Cargar Cuentas de Tesorería (Para pagar al contado) ---
+function cargarCuentasTesoreria() {
+    $.ajax({
+        url: 'admin/prestamos/crud_prestamos.php', // Usamos el controlador de finanzas que ya tiene esto
+        type: 'POST',
+        dataType: 'json',
+        data: { accion: 'listar_bancos_combo_completo' }, // Necesitamos crear esta acción o usar una similar
+        success: function(response) {
+            let select = $('#selectCuentaOrigen');
+            select.empty();
+            
+            // Opción por defecto: Caja General
+            // (Idealmente esto vendría del backend, pero lo simulamos si falla)
+            if(response.respuesta) {
+                // Agregar Cajas
+                if(response.cajas && response.cajas.length > 0) {
+                    select.append('<optgroup label="Cajas (Efectivo)">');
+                    response.cajas.forEach(c => {
+                        select.append(`<option value="CAJA_${c.id}" data-tipo="CAJA">${c.nombre_caja} ($${c.saldo})</option>`);
+                    });
+                    select.append('</optgroup>');
+                }
+                
+                // Agregar Bancos
+                if(response.bancos && response.bancos.length > 0) {
+                    select.append('<optgroup label="Bancos">');
+                    response.bancos.forEach(b => {
+                        select.append(`<option value="BANCO_${b.id}" data-tipo="BANCO">${b.nombre_banco} - ${b.numero_cuenta} ($${b.saldo})</option>`);
+                    });
+                    select.append('</optgroup>');
+                }
+            } else {
+                select.append('<option value="CAJA_DEF" data-tipo="CAJA">Caja General (Default)</option>');
+            }
+        }
+    });
+}

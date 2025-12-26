@@ -330,116 +330,83 @@ case 'guardarCompra':
                 ]);
             }
 
-           // =========================================================
-            // 3. INTEGRACIÓN CONTABLE AUTOMÁTICA (COMPRA MANUAL)
+         // =========================================================
+            // 3. INTEGRACIÓN CONTABLE Y FINANCIERA (ACTUALIZADO)
             // =========================================================
 
-            // A. OBTENER CUENTAS CONTABLES (Mapeo)
-            // Asegúrate de tener estos códigos configurados en tu sistema
+            // A. OBTENER CUENTAS BASE
             $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
             $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
-            $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
-
-           // --- 1. OBTENER Y SANITIZAR TODOS LOS TOTALES ---
-            // Usamos '?? 0' para que si el dato no viene, asuma que es cero y no de error.
+            
+            // Totales sanitizados
             $total_gravado = floatval($datos_cabecera['total_gravado'] ?? 0);
-            $total_exenta  = floatval($datos_cabecera['total_exenta'] ?? 0);   // <-- Ahora sí la definimos
-            $total_no_suj  = floatval($datos_cabecera['total_no_suj'] ?? 0);   // <-- Ahora sí la definimos
+            $total_exenta  = floatval($datos_cabecera['total_exenta'] ?? 0);
+            $total_no_suj  = floatval($datos_cabecera['total_no_suj'] ?? 0);
             $total_iva     = floatval($datos_cabecera['total_iva'] ?? 0);
             $total_pagar   = floatval($datos_cabecera['total_pagar'] ?? 0);
-
-            // --- 2. CÁLCULO DE MONTO PARA INVENTARIO ---
-            // Ahora la suma funcionará perfecta
             $monto_inventario = $total_gravado + $total_exenta + $total_no_suj;
-            
-            $monto_iva       = $total_iva;
-            $monto_proveedor = $total_pagar;
-            // C. DEFINIR ENCABEZADO DEL ASIENTO
-            $datos_encabezado_asiento = [
-                'fechaAsiento'    => $datos_cabecera['fecha_emision'],
-                'tipoAsiento'     => 'Egreso', // O 'Diario' según tu lógica
-                'concepto'        => "Registro de Compra Manual Doc. " . $datos_cabecera['numero_documento'] . " - " . ($datos_cabecera['nombre_proveedor'] ?? 'Proveedor Varios'),
-                'usuarioRegistro' => $_SESSION['userNombre']
-            ];
 
-            // D. DEFINIR DETALLE (PARTIDA DOBLE)
+            // --- LÓGICA DE PAGO (Aquí ocurre la magia) ---
+            $id_cuenta_haber = null; // La cuenta que se abona (Salida)
+
+            if ($condicion_pago == '2') {
+                // CASO CRÉDITO: Se genera deuda a Proveedores
+                $id_cuenta_haber = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+            
+            } else {
+                // CASO CONTADO: ¡Descontamos dinero real!
+                
+                // Recibimos estos datos nuevos desde el JS
+                $origen_pago = $datos_cabecera['origen_pago'] ?? 'CAJA'; // 'BANCO' o 'CAJA'
+                $id_cuenta_origen = $datos_cabecera['id_cuenta_origen'] ?? null;
+
+                // Si no viene cuenta (ej: compra rápida), intentamos usar la Caja General por defecto
+                if (!$id_cuenta_origen) {
+                    $stmtCaja = $pdo->prepare("SELECT id FROM fin_cajas WHERE codigo_institucion = ? LIMIT 1");
+                    $stmtCaja->execute([$codigo_institucion_sesion]);
+                    $id_cuenta_origen = $stmtCaja->fetchColumn();
+                    $origen_pago = 'CAJA';
+                }
+
+                if ($id_cuenta_origen) {
+                    // LLAMAMOS A LA FUNCIÓN QUE RESTA EL DINERO
+                    // Y obtenemos el ID contable real de esa cuenta (ej: 110201 Banco Agrícola)
+                    $id_cuenta_haber = procesar_salida_dinero(
+                        $pdo, 
+                        $codigo_institucion_sesion, 
+                        $origen_pago, 
+                        $id_cuenta_origen, 
+                        $total_pagar
+                    );
+                } else {
+                    throw new Exception("No se ha configurado una Caja o Banco para realizar el pago.");
+                }
+            }
+
+            // D. DEFINIR DETALLE DEL ASIENTO
             $datos_detalle_asiento = [
-                // 1. CARGO: Inventario (Entrada de Mercancía - Valor Neto)
-                [
-                    'cuenta_id' => $id_inventario, 
-                    'debito'    => $total_gravado, 
-                    'credito'   => 0.00
-                ],
-                // 2. CARGO: IVA Crédito Fiscal (Impuesto a favor)
-                [
-                    'cuenta_id' => $id_iva_credito, 
-                    'debito'    => $total_iva, 
-                    'credito'   => 0.00
-                ],
-                // 3. ABONO: Cuentas por Pagar (Deuda al Proveedor)
-                [
-                    'cuenta_id' => $id_proveedores_cp, 
-                    'debito'    => 0.00, 
-                    'credito'   => $total_pagar
-                ]
+                // 1. CARGO: Inventario
+                ['cuenta_id' => $id_inventario, 'debito' => $monto_inventario, 'credito' => 0.00],
+                // 2. CARGO: IVA
+                ['cuenta_id' => $id_iva_credito, 'debito' => $total_iva, 'credito' => 0.00],
+                // 3. ABONO: Salida de Dinero o Deuda (Usamos el ID dinámico que obtuvimos arriba)
+                ['cuenta_id' => $id_cuenta_haber, 'debito' => 0.00, 'credito' => $total_pagar]
             ];
 
             // E. REGISTRAR ASIENTO
-            $resultado_contable = registrarAsientoAutomatico(
-                $pdo, 
-                $codigo_institucion_sesion, 
-                $datos_encabezado_asiento, 
-                $datos_detalle_asiento
-            );
+            $datos_encabezado_asiento = [
+                'fechaAsiento'    => $fecha_emision,
+                'tipoAsiento'     => 'Egreso',
+                'concepto'        => "Compra " . ($condicion_pago=='1'?'Contado':'Crédito') . " Doc: " . $datos_cabecera['numero_documento'],
+                'usuarioRegistro' => $usuario_activo
+            ];
 
-            // Validar éxito del asiento
+            $resultado_contable = registrarAsientoAutomatico($pdo, $codigo_institucion_sesion, $datos_encabezado_asiento, $datos_detalle_asiento);
+
             if ($resultado_contable['respuesta']) {
-                // Si se creó, actualizamos la compra con el ID del asiento generado
-                $sql_link_asiento = "UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?";
-                $pdo->prepare($sql_link_asiento)->execute([$resultado_contable['numero_asiento'], $id_compra]);
-            } else {
-                // Opcional: Si es crítico que exista contabilidad, descomenta la siguiente línea para revertir todo si falla el asiento
-                // throw new Exception("Error al generar asiento contable: " . $resultado_contable['mensaje']);
+                $sql_link = "UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?";
+                $pdo->prepare($sql_link)->execute([$resultado_contable['numero_asiento'], $id_compra]);
             }
-
-// --- DETERMINAR LA CUENTA DE SALIDA (HABER) ---
-    $id_cuenta_salida = 0;
-    $condicion_pago = $compra_data['condicion_pago'] ?? '1'; // 1: Contado, 2: Crédito
-    
-    if ($condicion_pago == '2') {
-        // A. ES CRÉDITO -> Usamos Cuentas por Pagar Proveedores
-        $id_cuenta_salida = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
-    } else {
-        // B. ES CONTADO -> Buscamos según el Método (Efectivo, Banco, etc.)
-        $forma_pago = $compra_data['forma_pago'] ?? '01'; // Default Efectivo
-        
-        // Buscamos en la tabla de configuración
-        $sql_cuenta = "SELECT id_cuenta_contable FROM configuracion_cuentas_pago 
-                       WHERE codigo_forma_pago = ? AND codigo_institucion = ?";
-        $stmt_c = $pdo->prepare($sql_cuenta);
-        $stmt_c->execute([$forma_pago, $codigo_institucion_sesion]);
-        $res_cuenta = $stmt_c->fetch(PDO::FETCH_ASSOC);
-        
-        if ($res_cuenta) {
-            $id_cuenta_salida = $res_cuenta['id_cuenta_contable'];
-        } else {
-            // FALLBACK: Si no configuraron la cuenta específica, usamos CAJA GENERAL por defecto
-            // O lanza un error si prefieres ser estricto.
-            $id_cuenta_salida = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'CAJA_GENERAL');
-        }
-    }
-
-    // --- CONSTRUIR DETALLE DEL ASIENTO ---
-    $datos_detalle_asiento = [
-        // 1. CARGO: Inventario
-        ['cuenta_id' => $id_inventario, 'debito' => $monto_inventario, 'credito' => 0.00],
-        
-        // 2. CARGO: IVA (si aplica)
-        ['cuenta_id' => $id_iva_credito, 'debito' => $monto_iva, 'credito' => 0.00],
-        
-        // 3. ABONO: Cuenta de Salida (Banco, Caja o Proveedor)
-        ['cuenta_id' => $id_cuenta_salida, 'debito' => 0.00, 'credito' => $monto_proveedor]
-    ];
 
             $pdo->commit();
             echo json_encode(['respuesta' => true, 'mensaje' => 'Compra manual registrada y precios actualizados.']);
@@ -736,6 +703,14 @@ case 'guardarCompra':
 
         $compra_data = json_decode($_POST['compra_data'], true);
         $productos_data = json_decode($_POST['productos_data'], true);
+
+
+        // --- IMPORTANTE: Recibir datos de Tesorería del JS ---
+            // Estos vienen del formulario manual cuando le das "Guardar" después de subir el JSON
+            $condicion_pago_manual = $_POST['condicion_pago'] ?? '1'; // 1=Contado, 2=Crédito
+            $origen_pago           = $_POST['origen_pago'] ?? 'CAJA'; // BANCO o CAJA
+            $id_cuenta_origen      = $_POST['id_cuenta_origen'] ?? null;
+            // ----------------------------------------------------
 
         if (!$compra_data || !$productos_data) {
             throw new Exception("Datos de la compra inválidos.");
@@ -1068,92 +1043,120 @@ case 'guardarCompra':
             // asegúrate que use la columna correcta si decides descomentarlo.
         }
 
-       // =========================================================
-            // 4. INTEGRACIÓN CONTABLE AUTOMÁTICA (CORREGIDA)
-            // =========================================================
+   // =========================================================
+        // 4. INTEGRACIÓN CONTABLE Y FINANCIERA (CORREGIDA)
+        // =========================================================
 
-            // A. OBTENER CUENTAS
-            $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
-            $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
-            $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+        // A. OBTENER CUENTAS BASE
+        $id_inventario = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'INVENTARIO_MERCADERIA');
+        $id_iva_credito = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'IVA_CREDITO_FISCAL');
+        $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+        
+        // B. OBTENER VALORES DEL JSON
+        $json_gravada = floatval($compra_data['resumen']['total_gravada'] ?? 0);
+        $json_iva     = floatval($compra_data['resumen']['total_iva'] ?? 0);
+        $json_total   = floatval($compra_data['resumen']['total_pagar'] ?? 0);
+        $json_exenta  = floatval($compra_data['resumen']['total_exenta'] ?? 0);
+        $json_nosuj   = floatval($compra_data['resumen']['total_no_suj'] ?? 0);
+
+        // C. DETERMINAR MONTOS (Inventario vs IVA)
+        $tipo_dte = $compra_data['tipo_dte'] ?? '03';
+        
+        $monto_inventario = 0;
+        $monto_iva        = $json_iva;
+        // El monto que sale (ya sea del banco o deuda) es el total a pagar
+        $monto_salida     = $json_total; 
+
+        if ($tipo_dte === '01') {
+            // FACTURA: Inventario = (Total - IVA) + Exentas
+            $monto_inventario = ($json_gravada - $json_iva) + $json_exenta + $json_nosuj;
+        } else {
+            // CCF: Inventario = Gravada + Exentas
+            $monto_inventario = $json_gravada + $json_exenta + $json_nosuj;
+        }
+
+        // --- D. LÓGICA DE PAGO (TESORERÍA) ---
+        $id_cuenta_haber = null; // Aquí guardaremos el ID contable de la cuenta que paga (Banco, Caja o Proveedor)
+
+        // Verificamos la condición que definimos al inicio del case (prioridad manual vs json)
+        if ($condicion_pago == '2') {
+            // CASO CRÉDITO: Se genera deuda a Proveedores
+            $id_cuenta_haber = $id_proveedores_cp;
+        } else {
+            // CASO CONTADO: ¡Descontar Dinero Real!
             
-            // B. OBTENER VALORES DEL JSON
-            // Nota: En DTE Factura (01), 'totalGravada' suele ser el valor CON IVA incluido.
-            // En DTE CCF (03), 'totalGravada' suele ser el valor NETO.
-            $json_gravada = floatval($compra_data['resumen']['total_gravada'] ?? 0);
-            $json_iva     = floatval($compra_data['resumen']['total_iva'] ?? 0);
-            $json_total   = floatval($compra_data['resumen']['total_pagar'] ?? 0);
-            $json_exenta  = floatval($compra_data['resumen']['total_exenta'] ?? 0);
-            $json_nosuj   = floatval($compra_data['resumen']['total_no_suj'] ?? 0);
+            // Recibimos los datos que envía el JS en el FormData
+            $origen_pago = $_POST['origen_pago'] ?? 'CAJA'; 
+            $id_cuenta_origen = $_POST['id_cuenta_origen'] ?? null;
 
-            // C. DETERMINAR MONTOS PARA EL ASIENTO SEGÚN TIPO DOCUMENTO
-            $tipo_dte = $compra_data['tipo_dte'] ?? '03';
-            
-            $monto_inventario = 0;
-            $monto_iva        = $json_iva;
-            $monto_proveedor  = $json_total; // Lo que realmente se paga
-
-            if ($tipo_dte === '01') {
-                // CASO FACTURA: El total a pagar ($6.00) incluye IVA.
-                // Inventario = Total Pagar - IVA - Exentas/NoSujetas
-                // Ejemplo: $6.00 - $0.69 = $5.31 (Costo Neto)
-                // (Asumiendo que json_gravada trae el bruto)
-                $monto_inventario = $json_gravada - $json_iva; 
-                
-                // Ajuste de seguridad: Si hay exentas, se suman directo al inventario
-                $monto_inventario += ($json_exenta + $json_nosuj);
-
-            } else {
-                // CASO CCF (03) y OTROS: El total gravado es Neto.
-                // Inventario = Total Gravado + Exentas + No Sujetas
-                $monto_inventario = $json_gravada + $json_exenta + $json_nosuj;
+            // Validación de seguridad: Si viene vacío o "null" string
+            if (empty($id_cuenta_origen) || $id_cuenta_origen === 'null') {
+                // Intentamos buscar la Caja General por defecto
+                $stmtCaja = $pdo->prepare("SELECT id FROM fin_cajas WHERE codigo_institucion = ? LIMIT 1");
+                $stmtCaja->execute([$codigo_institucion_sesion]);
+                $id_cuenta_origen = $stmtCaja->fetchColumn();
+                $origen_pago = 'CAJA';
             }
 
-            // D. CONSTRUIR ENCABEZADO
-            $datos_encabezado = [
-                'fechaAsiento'    => $compra_data['fecha_emision'] ?? date('Y-m-d'), 
-                'tipoAsiento'     => 'Egreso', 
-                'concepto'        => "Registro automático de Compra DTE No. " . $compra_data['numero_control'] . " del proveedor " . $compra_data['emisor_nombre'],
-                'usuarioRegistro' => $usuario_activo
-            ];
-
-            // E. CONSTRUIR DETALLE (Partida Doble)
-            $datos_detalle_asiento = [
-                // 1. DÉBITO: Inventario (Costo Neto)
-                [
-                    'cuenta_id' => $id_inventario, 
-                    'debito'    => $monto_inventario, 
-                    'credito'   => 0.00
-                ],
-                
-                // 2. DÉBITO: IVA (Impuesto)
-                [
-                    'cuenta_id' => $id_iva_credito, 
-                    'debito'    => $monto_iva, 
-                    'credito'   => 0.00
-                ],
-                
-                // 3. CRÉDITO: Proveedor (Total a Pagar)
-                [
-                    'cuenta_id' => $id_proveedores_cp, 
-                    'debito'    => 0.00, 
-                    'credito'   => $monto_proveedor
-                ],
-            ];
-
-            // F. REGISTRAR
-            $resultado_contable = registrarAsientoAutomatico(
-                $pdo, 
-                $codigo_institucion_sesion, 
-                $datos_encabezado, 
-                $datos_detalle_asiento
-            );
-
-            if ($resultado_contable['respuesta']) {
-                $pdo->prepare("UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?")->execute([$resultado_contable['numero_asiento'], $id_compra]);
+            if ($id_cuenta_origen) {
+                // LLAMAMOS A LA FUNCIÓN QUE RESTA EL DINERO
+                // Esta función (que ya agregaste al final del archivo) devuelve el ID Contable de esa caja/banco
+                $id_cuenta_haber = procesar_salida_dinero(
+                    $pdo, 
+                    $codigo_institucion_sesion, 
+                    $origen_pago, 
+                    $id_cuenta_origen, 
+                    $monto_salida
+                );
             } else {
-                throw new Exception("Error Contable: El asiento no pudo registrarse. " . $resultado_contable['mensaje']);
+                // Si falló todo, fallback a Proveedores para no romper la contabilidad
+                $id_cuenta_haber = $id_proveedores_cp;
+                // Opcional: throw new Exception("No se definió cuenta de pago para compra al contado.");
             }
+        }
+
+        // E. CONSTRUIR DETALLE DEL ASIENTO
+        $datos_detalle_asiento = [
+            // 1. DÉBITO: Inventario
+            [
+                'cuenta_id' => $id_inventario, 
+                'debito'    => $monto_inventario, 
+                'credito'   => 0.00
+            ],
+            // 2. DÉBITO: IVA
+            [
+                'cuenta_id' => $id_iva_credito, 
+                'debito'    => $monto_iva, 
+                'credito'   => 0.00
+            ],
+            // 3. CRÉDITO: Salida de Dinero o Deuda
+            [
+                'cuenta_id' => $id_cuenta_haber, // <--- Aquí ya va la cuenta correcta (Banco/Caja/Prov)
+                'debito'    => 0.00, 
+                'credito'   => $monto_salida
+            ],
+        ];
+
+        // F. REGISTRAR ASIENTO
+        $datos_encabezado = [
+            'fechaAsiento'    => $compra_data['fecha_emision'] ?? date('Y-m-d'), 
+            'tipoAsiento'     => 'Egreso', 
+            'concepto'        => "Compra DTE " . $compra_data['numero_control'] . " (" . ($condicion_pago=='1'?'Contado':'Crédito') . ")",
+            'usuarioRegistro' => $usuario_activo
+        ];
+
+        $resultado_contable = registrarAsientoAutomatico(
+            $pdo, 
+            $codigo_institucion_sesion, 
+            $datos_encabezado, 
+            $datos_detalle_asiento
+        );
+
+        if ($resultado_contable['respuesta']) {
+            $pdo->prepare("UPDATE compras_cabecera SET asiento_id = ? WHERE id_compra = ?")->execute([$resultado_contable['numero_asiento'], $id_compra]);
+        } else {
+            throw new Exception("Error Contable: " . $resultado_contable['mensaje']);
+        }
 
         // =============================
         // FINAL DE LA TRANSACCIÓN
@@ -1161,7 +1164,7 @@ case 'guardarCompra':
         $pdo->commit();
         echo json_encode([
             'respuesta' => true, 
-            'mensaje'   => 'Compra guardada y asiento contable No. ' . $resultado_contable['numero_asiento'] . ' registrado exitosamente.', 
+            'mensaje'   => 'Compra guardada y procesada correctamente.', 
             'id_compra' => $id_compra
         ]);
 
@@ -1345,7 +1348,31 @@ case 'guardarCompra':
     }
     break;
 
+// --- NUEVO: LISTAR CUENTAS PARA PAGAR ---
+case 'listar_cuentas_tesoreria':
+    try {
+        $data = ['bancos' => [], 'cajas' => []];
+        
+        // 1. Obtener Cajas
+        $sqlC = "SELECT id, nombre_caja, saldo_actual FROM fin_cajas 
+                 WHERE codigo_institucion = :inst AND estado = 'A'";
+        $stmtC = $pdo->prepare($sqlC);
+        $stmtC->execute([':inst' => $codigo_institucion_sesion]);
+        $data['cajas'] = $stmtC->fetchAll(PDO::FETCH_ASSOC);
 
+        // 2. Obtener Bancos
+        $sqlB = "SELECT id, nombre_banco, numero_cuenta, saldo_actual FROM fin_bancos_cuentas 
+                 WHERE codigo_institucion = :inst AND estado = 'A'";
+        $stmtB = $pdo->prepare($sqlB);
+        $stmtB->execute([':inst' => $codigo_institucion_sesion]);
+        $data['bancos'] = $stmtB->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(['respuesta' => true, 'datos' => $data]);
+    } catch (Exception $e) {
+        echo json_encode(['respuesta' => false, 'mensaje' => $e->getMessage()]);
+    }
+    break;
+    
     case 'listarCompras':
         try {
             $sql = "SELECT 
@@ -1471,21 +1498,23 @@ case 'guardarCompra':
                             $dte['firma'] = 'ninguna';
                         }
 
-                    // Secciones obligatorias (las claves pueden tener alias)
-                    $secciones_obligatorias = [
-                        "identificacion"   => ["identificacion"],
-                        "emisor"           => ["emisor"],
-                        "cuerpoDocumento"  => ["cuerpoDocumento"],
-                        "resumen"          => ["resumen"],
-                        "firma"            => ["firmaElectronica", "firma", "Firma", "respuestaHacienda.firma", "respuestaHacienda.firmaElectronica", "respuestaHacienda.Firma"],
-                        "selloRecibido"    => ["selloRecibido", "SelloRecibido", "respuestaHacienda.selloRecibido", "respuestaHacienda.SelloRecibido"]
-                    ];
+                 // ========================================================
+                //  1. VALIDACIÓN RELAJADA (Sello y Firma OPCIONALES)
+                // ========================================================
+                
+                // Solo exigimos lo vital para el inventario: Identificación, Emisor, Cuerpo y Resumen.
+                $secciones_obligatorias = [
+                    "identificacion"   => ["identificacion"],
+                    "emisor"           => ["emisor"],
+                    "cuerpoDocumento"  => ["cuerpoDocumento"],
+                    "resumen"          => ["resumen"]
+                    // Quitamos 'firma' y 'selloRecibido' de aquí para que no de error
+                ];
 
                 $errores = [];
                 foreach ($secciones_obligatorias as $nombre_logico => $variantes) {
                     $encontrada = false;
                     foreach ($variantes as $variante) {
-                        // Soporte para subniveles con punto, ej: "respuestaHacienda.firma"
                         $parts = explode('.', $variante);
                         $tmp = $dte;
                         foreach ($parts as $p) {
@@ -1497,7 +1526,6 @@ case 'guardarCompra':
                             }
                         }
                         if ($tmp !== null) {
-                            // normalizamos al nombre lógico
                             $dte[$nombre_logico] = $tmp;
                             $encontrada = true;
                             break;
@@ -1509,11 +1537,34 @@ case 'guardarCompra':
                 }
 
                 if (!empty($errores)) {
-                    echo json_encode([
-                        'respuesta' => false,
-                        'errores' => $errores
-                    ]);
+                    echo json_encode(['respuesta' => false, 'errores' => $errores]);
                     exit;
+                }
+
+                // ========================================================
+                //  2. GENERAR DATOS FALTANTES (SELLO / FIRMA)
+                // ========================================================
+                
+                // Buscar Firma Real
+                $firma_real = $dte['firma'] 
+                    ?? $dte['firmaElectronica'] 
+                    ?? $dte['Firma'] 
+                    ?? ($dte['respuestaHacienda']['firma'] ?? null)
+                    ?? null;
+
+                // Buscar Sello Real
+                $sello_real = $dte['selloRecibido'] 
+                    ?? ($dte['respuestaHacienda']['selloRecibido'] ?? null)
+                    ?? ($dte['respuestaHacienda']['SelloRecibido'] ?? null);
+
+                // Si no hay sello, generamos uno temporal para que guarde en BD
+                if (!$sello_real) {
+                    // Genera algo como: PENDIENTE-A1B2C3
+                    $sello_real = "PENDIENTE-" . strtoupper(substr(md5(uniqid()), 0, 8));
+                }
+                
+                if (!$firma_real) {
+                    $firma_real = "NO_FIRMADO";
                 }
         
                 $mapeo = [
@@ -1547,23 +1598,10 @@ case 'guardarCompra':
                     'total_iva'          => $dte['resumen']['totalIva'] ?? 0,
                     'total_descuento'    => $dte['resumen']['totalDescu'] ?? 0,
                     'total_pagar'        => $dte['resumen']['totalPagar'] ?? 0,
-
-                // FIRMA Y SELLO (buscando en raíz y en respuestaHacienda)
-                'firma_electronica'  => 
-                    $dte['firma'] 
-                    ?? $dte['firmaElectronica'] 
-                    ?? $dte['Firma'] 
-                    ?? ($dte['respuestaHacienda']['firma'] ?? null)
-                    ?? ($dte['respuestaHacienda']['firmaElectronica'] ?? null)
-                    ?? ($dte['respuestaHacienda']['Firma'] ?? 'ninguna'),
-
-
-
-                    'sello_recibido'     => 
-                        $dte['selloRecibido'] 
-                        ?? ($dte['respuestaHacienda']['selloRecibido'] ?? null)
-                        ?? ($dte['respuestaHacienda']['SelloRecibido'] ?? null),
-
+                    // Pasamos la condición de operación para que el JS sepa si es crédito o contado
+                    'condicionOperacion' => $dte['identificacion']['tipoOperacion'] ?? '1',
+                    'firma_electronica'  => $firma_real,
+                    'sello_recibido'     => $sello_real,
                     // OBSERVACIONES
                     'observaciones'      => $dte['extension']['observaciones'] ?? null,
 
@@ -1739,4 +1777,49 @@ case 'guardarCompra':
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;
 }
+
+// ==============================================================================
+// FUNCIÓN AUXILIAR: REGISTRAR SALIDA DE DINERO (GASTO/COMPRA)
+// ==============================================================================
+function procesar_salida_dinero($pdo, $cod_inst, $origen, $id_cuenta, $monto) {
+    // $origen: 'BANCO' o 'CAJA'
+    // $id_cuenta: ID de la tabla fin_bancos_cuentas o fin_cajas
+    
+    $id_cuenta_contable = null;
+
+    if ($origen === 'BANCO') {
+        // 1. Verificar saldo suficiente
+        $stmt = $pdo->prepare("SELECT saldo_actual, id_cuenta_contable FROM fin_bancos_cuentas WHERE id = ? AND codigo_institucion = ?");
+        $stmt->execute([$id_cuenta, $cod_inst]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) throw new Exception("La cuenta bancaria seleccionada no existe.");
+        // if ($row['saldo_actual'] < $monto) throw new Exception("Saldo insuficiente en Banco."); // Opcional: Validar saldo
+
+        // 2. Restar Dinero
+        $stmtUpd = $pdo->prepare("UPDATE fin_bancos_cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?");
+        $stmtUpd->execute([$monto, $id_cuenta]);
+        
+        $id_cuenta_contable = $row['id_cuenta_contable'];
+
+    } elseif ($origen === 'CAJA') {
+        // 1. Verificar saldo
+        $stmt = $pdo->prepare("SELECT saldo_actual, id_cuenta_contable FROM fin_cajas WHERE id = ? AND codigo_institucion = ?");
+        $stmt->execute([$id_cuenta, $cod_inst]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) throw new Exception("La caja seleccionada no existe.");
+        // if ($row['saldo_actual'] < $monto) throw new Exception("Saldo insuficiente en Caja."); // Opcional
+
+        // 2. Restar Dinero
+        $stmtUpd = $pdo->prepare("UPDATE fin_cajas SET saldo_actual = saldo_actual - ? WHERE id = ?");
+        $stmtUpd->execute([$monto, $id_cuenta]);
+
+        $id_cuenta_contable = $row['id_cuenta_contable'];
+    }
+
+    return $id_cuenta_contable; // Retornamos el ID contable para usarlo en la partida
+}
+
+
 ?>

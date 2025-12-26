@@ -597,8 +597,32 @@ $('#btnDte').on('click', function() {
                 // Totales Calculados
                 total_gravado: sumGravado.toFixed(2),
                 total_iva: sumIva.toFixed(2),
-                total_pagar: sumTotal.toFixed(2)
+                total_pagar: sumTotal.toFixed(2),
+
+                // --- NUEVOS CAMPOS DE PAGO ---
+                condicion_pago: $('#selectCondicionPago').val(),
+                                
+                // Lógica para detectar origen del dinero
+                origen_pago: 'CREDITO', // Valor por defecto
+                id_cuenta_origen: null
             };
+
+            // Si es CONTADO (1), leemos el select de cuentas
+            if (cabeceraManual.condicion_pago == '1') {
+                let seleccion = $('#selectCuentaOrigen option:selected');
+                let tipo = seleccion.data('tipo'); // 'BANCO' o 'CAJA'
+                let valorFull = $('#selectCuentaOrigen').val(); // Ej: "BANCO_5"
+                
+                if (valorFull) {
+                    let idPuro = valorFull.split('_')[1]; // Sacamos el ID numérico (5)
+                    cabeceraManual.origen_pago = tipo;
+                    cabeceraManual.id_cuenta_origen = idPuro;
+                } else {
+                    // Si no seleccionó nada, forzamos Caja General
+                    cabeceraManual.origen_pago = 'CAJA'; 
+                    cabeceraManual.id_cuenta_origen = null; // El backend buscará la default
+                }
+            }
 
             // 3. Empaquetamos para enviar al PHP
             datosDeEnvio = {
@@ -939,6 +963,10 @@ $('#formSubirDte').submit(function(e) {
                     setTimeout(() => {
                         $('#selectFormaPago').val(codigoPago);
                     }, 100);
+                    if ($('#selectCuentaOrigen option').length === 0) {
+                        cargarCuentasTesoreria(); // <--- ¡AQUÍ SE DISPARA SOLO!
+                    }
+
                 }else{
                     // CASO TU ARCHIVO JSON:
                     // Es Contado (1) pero 'pagos' es null.
@@ -1109,6 +1137,9 @@ $('#formSubirDte').submit(function(e) {
     // Llamadas iniciales
     $.when(cargarCatalogos(), cargarProveedores()).done(function(catalogoData, proveedoresData) {
         renderizarSelects(catalogoData, proveedoresData);
+        // LLAMAR AQUÍ TAMBIÉN PARA QUE APAREZCAN AL INICIO
+        cargarCuentasTesoreria();
+
     }).fail(function() {
         toastr.error('Error al cargar catálogos y proveedores.');
     });
@@ -1211,6 +1242,7 @@ $('#formSubirDte').submit(function(e) {
             // MOSTRAR MÉTODO DE PAGO
             $('#divMetodoPago').slideDown(); // Animación suave
             $('#selectFormaPago').prop('required', true);
+            $('#divCuentaOrigen').slideDown(); // <--- NUEVO DIV 
 
             // --- CORRECCIÓN: Volver a poner "01" por defecto ---
             // Solo si no tiene valor seleccionado, o forzarlo siempre:
@@ -1234,6 +1266,7 @@ $('#formSubirDte').submit(function(e) {
             // NINGUNO (Selección vacía o inválida)
             $('#divMetodoPago').hide();
             $('#divPlazoCredito').hide();
+            $('#divCuentaOrigen').hide(); // <--- OCULTAR
         }
     });
 // =======================================================
@@ -1306,5 +1339,45 @@ function calcularVencimiento() {
 
     // Llamar al inicio
     cargarMetodosPago();
+
+// PEGAR ESTO EN TU ARCHIVO compras.js SI NO LO ENCUENTRAS
+
+function cargarCuentasTesoreria() {
+    console.log("Cargando cuentas..."); // Para depurar en consola
+    $.ajax({
+        url: 'admin/compras/crud_compras.php', 
+        type: 'POST',
+        dataType: 'json',
+        data: { accion: 'listar_cuentas_tesoreria' },
+        success: function(response) {
+            let select = $('#selectCuentaOrigen');
+            select.empty();
+            
+            if(response.respuesta && response.datos) {
+                // Cajas
+                if(response.datos.cajas && response.datos.cajas.length > 0) {
+                    let grp = $('<optgroup label="Caja (Efectivo)">');
+                    response.datos.cajas.forEach(c => {
+                        grp.append(`<option value="CAJA_${c.id}" data-tipo="CAJA">${c.nombre_caja} ($${parseFloat(c.saldo_actual).toFixed(2)})</option>`);
+                    });
+                    select.append(grp);
+                }
+                // Bancos
+                if(response.datos.bancos && response.datos.bancos.length > 0) {
+                    let grp = $('<optgroup label="Bancos">');
+                    response.datos.bancos.forEach(b => {
+                        grp.append(`<option value="BANCO_${b.id}" data-tipo="BANCO">${b.nombre_banco} - ${b.numero_cuenta} ($${parseFloat(b.saldo_actual).toFixed(2)})</option>`);
+                    });
+                    select.append(grp);
+                }
+            } else {
+                select.append('<option value="">No hay cuentas configuradas</option>');
+            }
+        },
+        error: function(err) {
+            console.error("Error cargando cuentas", err);
+        }
+    });
+}
 
 });

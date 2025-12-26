@@ -40,7 +40,8 @@ switch ($accion) {
                     SELECT u.id_usuario, u.nombre AS username,
                            btrim(p.nombres || ' ' || p.apellidos) AS nombre_personal,
                            cp.descripcion AS nombre_perfil,
-                           i.nombre_institucion AS nombre_institucion_usuario
+                           i.nombre_institucion AS nombre_institucion_usuario,
+                           u.estado
                     FROM usuarios u
                     LEFT JOIN personal p ON u.codigo_personal = p.id_personal
                     LEFT JOIN catalogo_perfil cp ON u.codigo_perfil = cp.codigo
@@ -53,7 +54,7 @@ switch ($accion) {
                     SELECT u.id_usuario, u.nombre AS username, u.estado,
                            btrim(p.nombres || ' ' || p.apellidos) AS nombre_personal,
                            cp.descripcion AS nombre_perfil,
-                           i.nombre_institucion AS nombre_institucion_usuario
+                           i.nombre_institucion AS nombre_institucion_usuario, u.estado
                     FROM usuarios u
                     INNER JOIN personal p ON u.codigo_personal = p.id_personal
                     INNER JOIN catalogo_perfil cp ON u.codigo_perfil = cp.codigo
