@@ -1,0 +1,158 @@
+{% extends 'default_layout.html' %}
+
+{% block contenidos %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="fas fa-chart-pie"></i> Estado de Deuda</h3>
+        <a href="prestamos/registro_prestamo" class="btn btn-outline-primary">
+            <i class="fas fa-plus"></i> Nuevo Préstamo
+        </a>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Acreedor</th>
+                        <th>Fecha Inicio</th>
+                        <th>Monto Original</th>
+                        <th>Saldo Pendiente</th>
+                        <th>Próximo Vencimiento</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyDeudas">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalPagos" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Plan de Pagos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info py-2">
+                    <i class="fas fa-info-circle"></i> Selecciona la cuota a pagar
+                </div>
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Vence</th>
+                            <th>Monto</th>
+                            <th>Estado</th>
+                            <th>Pagar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyCuotas"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+{{ parent() }}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    // JS incrustado rápido o muévelo a un archivo separado js/prestamos/estado_deuda.js
+    const API = 'admin/prestamos/crud_prestamos.php';
+    
+    document.addEventListener('DOMContentLoaded', cargarDeudas);
+
+    function cargarDeudas() {
+        const fd = new FormData(); fd.append('accion', 'listar_estado_deuda');
+        fetch(API, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{
+            let html = '';
+            if(res.data.length === 0) html = '<tr><td colspan="6" class="text-center">No hay deudas pendientes.</td></tr>';
+            
+            res.data.forEach(d => {
+                html += `
+                <tr>
+                    <td class="fw-bold">${d.nombre_prestamista}</td>
+                    <td>${d.fecha_ingreso}</td>
+                    <td>$${d.monto_original}</td>
+                    <td class="text-danger fw-bold">$${d.saldo_pendiente}</td>
+                    <td>${d.proximo_vencimiento}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="verCuotas(${d.id})">
+                            <i class="fas fa-list"></i> Pagar / Ver
+                        </button>
+                    </td>
+                </tr>`;
+            });
+            document.getElementById('tbodyDeudas').innerHTML = html;
+        });
+    }
+
+    window.verCuotas = function(idPrestamo) {
+        const fd = new FormData(); 
+        fd.append('accion', 'ver_cuotas_prestamo');
+        fd.append('id_prestamo', idPrestamo);
+
+        fetch(API, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{
+            let html = '';
+            res.data.forEach(c => {
+                let btn = '';
+                let estadoBadge = '<span class="badge bg-secondary">Pendiente</span>';
+                
+                if(c.estado === 'PAGADO') {
+                    estadoBadge = '<span class="badge bg-success">Pagado</span>';
+                    btn = '<i class="fas fa-check text-success"></i>';
+                } else {
+                    btn = `<button class="btn btn-sm btn-primary" onclick="pagar(${c.id}, ${c.monto_cuota})">Pagar</button>`;
+                }
+
+                html += `
+                <tr>
+                    <td>${c.numero_cuota}</td>
+                    <td>${c.fecha_vencimiento}</td>
+                    <td>$${c.monto_cuota}</td>
+                    <td>${estadoBadge}</td>
+                    <td class="text-center">${btn}</td>
+                </tr>`;
+            });
+            document.getElementById('tbodyCuotas').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('modalPagos')).show();
+        });
+    };
+
+    window.pagar = function(idCuota, monto) {
+        Swal.fire({
+            title: `¿Pagar cuota de $${monto}?`,
+            text: "El dinero se descontará de Banco/Caja",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Pagar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Aquí podrías pedir origen (Caja o Banco), por defecto asumo BANCO ID 1 para el ejemplo
+                // Lo ideal es otro Swal con inputOptions
+                const fd = new FormData();
+                fd.append('accion', 'pagar_cuota');
+                fd.append('id_cuota', idCuota);
+                fd.append('origen_pago', 'BANCO'); 
+                fd.append('id_cuenta_origen', 1); // <--- OJO: Ajustar esto dinámicamente
+
+                fetch(API, {method:'POST', body:fd}).then(r=>r.json()).then(res=>{
+                    if(res.respuesta){
+                        Swal.fire('Pagado', res.mensaje, 'success');
+                        bootstrap.Modal.getInstance(document.getElementById('modalPagos')).hide();
+                        cargarDeudas();
+                    } else {
+                        Swal.fire('Error', res.mensaje, 'error');
+                    }
+                });
+            }
+        });
+    };
+</script>
+{% endblock %}

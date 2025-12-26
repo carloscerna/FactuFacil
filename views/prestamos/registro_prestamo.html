@@ -3,9 +3,9 @@
 
 {% block contenidos %}
 <div class="container mt-5">
-    <div class="card shadow-sm">
+    <div class="card shadow-sm border-0">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Registrar Ingreso de Préstamo</h5>
+            <h5 class="mb-0"><i class="fas fa-hand-holding-usd"></i> Registrar Ingreso de Préstamo</h5>
         </div>
         <div class="card-body">
             <form id="formPrestamo">
@@ -13,14 +13,13 @@
 
                 <div class="row">
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Prestamista (Acreedor)</label>
+                        <label class="form-label fw-bold">Prestamista (Acreedor)</label>
                         <select class="form-select" name="id_prestamista" id="selectPrestamista" required>
                             <option value="">Cargando...</option>
                         </select>
                     </div>
-
                     <div class="col-md-6 mb-3">
-                        <label class="form-label">Monto Recibido</label>
+                        <label class="form-label fw-bold">Monto Recibido</label>
                         <div class="input-group">
                             <span class="input-group-text">$</span>
                             <input type="number" step="0.01" class="form-control" name="monto" required>
@@ -28,48 +27,53 @@
                     </div>
                 </div>
 
+                <div class="row bg-light p-2 mb-3 rounded border">
+                    <div class="col-md-12"><h6 class="text-muted">Condiciones de Pago</h6></div>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label">Número de Cuotas (Meses)</label>
+                        <input type="number" class="form-control" name="num_cuotas" value="12" required min="1">
+                    </div>
+                    <div class="col-md-6 mb-2">
+                        <label class="form-label">Fecha Inicio Primer Pago</label>
+                        <input type="date" class="form-control" name="fecha_inicio_pago" required>
+                    </div>
+                </div>
+
                 <div class="row">
                     <div class="col-md-4 mb-3">
-                        <label class="form-label">Fecha Ingreso</label>
+                        <label class="form-label">Fecha de Ingreso (Hoy)</label>
                         <input type="date" class="form-control" name="fecha" value="{{ "now"|date("Y-m-d") }}" required>
                     </div>
 
                     <div class="col-md-8 mb-3">
-                        <label class="form-label">¿Dónde ingresa el dinero?</label>
-                        <div class="d-flex gap-3 p-2 border rounded bg-light">
-                            <div class="form-check">
+                        <label class="form-label fw-bold">¿A dónde ingresa el dinero?</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check form-check-inline">
                                 <input class="form-check-input" type="radio" name="destino" id="optCaja" value="CAJA" checked>
-                                <label class="form-check-label fw-bold" for="optCaja">
-                                    <i class="fas fa-cash-register"></i> En Caja (Efectivo)
-                                </label>
+                                <label class="form-check-label" for="optCaja"><i class="fas fa-cash-register"></i> Caja</label>
                             </div>
-                            <div class="form-check">
+                            <div class="form-check form-check-inline">
                                 <input class="form-check-input" type="radio" name="destino" id="optBanco" value="BANCO">
-                                <label class="form-check-label fw-bold" for="optBanco">
-                                    <i class="fas fa-university"></i> En Banco
-                                </label>
+                                <label class="form-check-label" for="optBanco"><i class="fas fa-university"></i> Banco</label>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <div class="row d-none" id="bloqueBanco">
-                    <div class="col-md-12 mb-3">
-                        <label class="form-label">Seleccionar Cuenta Bancaria de Destino</label>
-                        <select class="form-select" name="id_cuenta_banco" id="selectBanco">
-                            <option value="">Seleccione cuenta...</option>
-                        </select>
+                        
+                        <div class="mt-2 d-none" id="bloqueBanco">
+                            <select class="form-select" name="id_cuenta_banco" id="selectBanco">
+                                <option value="">Seleccione cuenta...</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Concepto / Notas</label>
-                    <textarea class="form-control" name="concepto" rows="2" placeholder="Ej: Préstamo para compra de mercadería..."></textarea>
+                    <textarea class="form-control" name="concepto" rows="2" placeholder="Detalles del préstamo..."></textarea>
                 </div>
 
                 <div class="text-end">
-                    <button type="submit" class="btn btn-success">
-                        <i class="fas fa-save"></i> Guardar Ingreso
+                    <button type="submit" class="btn btn-lg btn-success">
+                        <i class="fas fa-save"></i> Guardar y Generar Cuotas
                     </button>
                 </div>
             </form>
@@ -80,9 +84,5 @@
 
 {% block javascripts %}
 {{ parent() }}
-<script src="./js/tesoreria_prestamos.js"></script>
-{% endblock %}
-
-{% block estilos %}
-{{ parent() }}
+<script src="./js/prestamos/tesoreria_prestamos.js"></script>
 {% endblock %}
