@@ -12,28 +12,58 @@ if (empty($_SESSION['userNombre'])) {
 
 global $pdo;
 $path_root = trim($_SERVER['DOCUMENT_ROOT']);
-// Asegúrate de que estas rutas sean correctas en tu servidor
 include($path_root."/FactuFacil/includes/mainFunctions_.php");
 include($path_root."/FactuFacil/admin/contabilidad/funciones/contabilidad_api.php");
 
-/** @var PDO $dblink */
 $pdo = $dblink;
 $accion = $_POST['accion'] ?? $_GET['accion'] ?? '';
-
-$codigo_perfil_sesion = $_SESSION['codigo_perfil'] ?? '';
 $codigo_institucion_sesion = $_SESSION['codigo_institucion'] ?? '';
 $usuario_activo = $_SESSION['userNombre'] ?? 'Sistema';
 
 header('Content-Type: application/json');
 
+// --- FUNCIÓN AUXILIAR PARA RESTAR DINERO (Reutilizada de Compras) ---
+function procesar_salida_pago($pdo, $cod_inst, $origen_full, $monto) {
+    // $origen_full viene como "BANCO_5" o "CAJA_1"
+    
+    $parts = explode('_', $origen_full);
+    $tipo = $parts[0]; // BANCO o CAJA
+    $id = $parts[1];   // ID numérico
+    $id_cuenta_contable = null;
+
+    if ($tipo === 'BANCO') {
+        $sql = "SELECT id_cuenta_contable, saldo_actual FROM fin_bancos_cuentas WHERE id = ? AND codigo_institucion = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$id, $cod_inst]);
+        $row = $stmt->fetch();
+        
+        if(!$row) throw new Exception("Cuenta bancaria no encontrada.");
+        // if($row['saldo_actual'] < $monto) throw new Exception("Saldo insuficiente en Banco.");
+
+        $upd = "UPDATE fin_bancos_cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?";
+        $pdo->prepare($upd)->execute([$monto, $id]);
+        $id_cuenta_contable = $row['id_cuenta_contable'];
+
+    } elseif ($tipo === 'CAJA') {
+        $sql = "SELECT id_cuenta_contable, saldo_actual FROM fin_cajas WHERE id = ? AND codigo_institucion = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$id, $cod_inst]);
+        $row = $stmt->fetch();
+
+        if(!$row) throw new Exception("Caja no encontrada.");
+        
+        $upd = "UPDATE fin_cajas SET saldo_actual = saldo_actual - ? WHERE id = ?";
+        $pdo->prepare($upd)->execute([$monto, $id]);
+        $id_cuenta_contable = $row['id_cuenta_contable'];
+    }
+
+    return $id_cuenta_contable;
+}
+
 switch ($accion) {
     
     case 'listarCuentasPorPagar':
         try {
-           // CORRECCIÓN: Usamos p.nombre_empresa como nombre_proveedor
-            // Si quieres ser más robusto y mostrar nombre+apellido si la empresa está vacía,
-            // puedes usar: COALESCE(NULLIF(p.nombre_empresa, ''), CONCAT(p.nombres, ' ', p.apellidos)) as nombre_proveedor
-            
             $sql = "SELECT 
                         c.id_compra,
                         c.fecha_emision,
@@ -55,9 +85,6 @@ switch ($accion) {
             $pendientes = [];
             foreach ($todas as $fila) {
                 $saldo = floatval($fila['total_compra']) - floatval($fila['total_abonado']);
-                
-                // Solo enviamos las que tienen deuda viva (mayor a $0.00)
-                // Usamos un pequeño margen (0.001) para evitar problemas de decimales flotantes
                 if ($saldo > 0.001) {
                     $fila['saldo_pendiente'] = number_format($saldo, 2, '.', '');
                     $pendientes[] = $fila;
@@ -70,92 +97,141 @@ switch ($accion) {
         }
         break;
 
+    // --- NUEVO: OBTENER BANCOS Y CAJAS REALES (Igual que en Compras) ---
     case 'obtenerCuentasTesoreria':
         try {
-            // Consulta para traer bancos y cajas activos
-            $sql = "SELECT id, nombre_cuenta, tipo_cuenta, saldo_actual 
-                    FROM tesoreria_cuentas 
-                    WHERE codigo_institucion = ? AND estado = 'ACTIVO'";
+            $cuentas = [];
             
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([$codigo_institucion_sesion]);
-            $resultado = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // 1. Cajas
+            $sqlC = "SELECT id, nombre_caja as nombre, saldo_actual, 'CAJA' as tipo FROM fin_cajas WHERE codigo_institucion = ? AND estado = 'A'";
+            $stmtC = $pdo->prepare($sqlC);
+            $stmtC->execute([$codigo_institucion_sesion]);
+            while($row = $stmtC->fetch(PDO::FETCH_ASSOC)){
+                // Generamos ID compuesto para el select (ej: CAJA_1)
+                $cuentas[] = [
+                    'id_compuesto' => 'CAJA_' . $row['id'],
+                    'texto' => 'Caja: ' . $row['nombre'] . ' ($' . $row['saldo_actual'] . ')'
+                ];
+            }
+
+            // 2. Bancos
+            $sqlB = "SELECT id, nombre_banco, numero_cuenta, saldo_actual, 'BANCO' as tipo FROM fin_bancos_cuentas WHERE codigo_institucion = ? AND estado = 'A'";
+            $stmtB = $pdo->prepare($sqlB);
+            $stmtB->execute([$codigo_institucion_sesion]);
+            while($row = $stmtB->fetch(PDO::FETCH_ASSOC)){
+                $cuentas[] = [
+                    'id_compuesto' => 'BANCO_' . $row['id'],
+                    'texto' => 'Banco: ' . $row['nombre_banco'] . ' - ' . $row['numero_cuenta'] . ' ($' . $row['saldo_actual'] . ')'
+                ];
+            }
             
-            // IMPORTANTE: Devolver JSON puro
-            echo json_encode($resultado);
+            echo json_encode($cuentas);
             
         } catch (Exception $e) {
-            // Si falla, devolvemos array vacío
             echo json_encode([]); 
         }
         break;
 
-  case 'guardarAbono':
+    case 'guardarAbono':
         try {
-            // Validar datos mínimos
-            if (empty($_POST['id_compra']) || empty($_POST['monto'])) {
-                throw new Exception("Datos incompletos.");
+            if (empty($_POST['id_compra']) || empty($_POST['monto']) || empty($_POST['id_cuenta_tesoreria'])) {
+                throw new Exception("Datos incompletos. Seleccione una cuenta de pago.");
             }
 
             $pdo->beginTransaction();
 
             $id_compra = $_POST['id_compra'];
             $monto     = floatval($_POST['monto']);
-            $id_cuenta = $_POST['id_cuenta_tesoreria']; 
+            $id_cuenta_origen = $_POST['id_cuenta_tesoreria']; // Viene como "BANCO_1" o "CAJA_1"
             $ref       = $_POST['referencia'] ?? '';
             $fecha     = $_POST['fecha_pago'];
 
-            // 1. Insertar Historial de Pago
-            $sql_hist = "INSERT INTO compras_pagos (id_compra, fecha_pago, monto_abonado, referencia_pago, id_cuenta_tesoreria, usuario_registro)
-                         VALUES (?, ?, ?, ?, ?, ?)";
-            $stmt = $pdo->prepare($sql_hist);
-            $stmt->execute([$id_compra, $fecha, $monto, $ref, $id_cuenta, $usuario_activo]);
+            // 1. DESCONTAR DINERO (TESORERÍA)
+            // Esta función devuelve el ID Contable de la Caja/Banco afectado
+            $id_cuenta_haber_contable = procesar_salida_pago($pdo, $codigo_institucion_sesion, $id_cuenta_origen, $monto);
 
-            // 2. Actualizar Saldo en Tesorería (Resta el dinero)
-            $sql_upd = "UPDATE tesoreria_cuentas SET saldo_actual = saldo_actual - ? WHERE id = ?";
-            $pdo->prepare($sql_upd)->execute([$monto, $id_cuenta]);
+            if (!$id_cuenta_haber_contable) {
+                throw new Exception("La cuenta seleccionada no tiene configuración contable.");
+            }
+
+            // 2. INSERTAR HISTORIAL DE PAGO
+            // Nota: Guardamos el ID compuesto en un campo de texto o adaptamos la tabla. 
+            // Para simplificar, guardamos 0 en 'id_cuenta_tesoreria' antigua y usamos la referencia para saber cuál fue.
+            $sql_hist = "INSERT INTO compras_pagos (id_compra, fecha_pago, monto_abonado, referencia_pago, usuario_registro)
+                         VALUES (?, ?, ?, ?, ?)";
+            $stmt = $pdo->prepare($sql_hist);
+            $desc_ref = $ref . " (Pago desde " . $id_cuenta_origen . ")";
+            $stmt->execute([$id_compra, $fecha, $monto, $desc_ref, $usuario_activo]);
+            $id_pago = $pdo->lastInsertId(); // Si necesitas el ID
+
+            // 3. GENERAR PARTIDA CONTABLE (PROVEEDORES vs BANCO)
+            
+            // A. Obtener cuenta de Pasivo (Proveedores)
+            $id_proveedores_cp = obtenerIdCuentaPorMapeo($pdo, $codigo_institucion_sesion, 'PROVEEDORES_CP');
+
+            // B. Buscar info de la compra para el concepto
+            $stmtInfo = $pdo->prepare("SELECT numero_documento, p.nombre_empresa FROM compras_cabecera c JOIN proveedores p ON c.id_proveedores = p.id_proveedores WHERE id_compra = ?");
+            $stmtInfo->execute([$id_compra]);
+            $infoCompra = $stmtInfo->fetch();
+
+            $datos_encabezado = [
+                'fechaAsiento'    => $fecha,
+                'tipoAsiento'     => 'Egreso',
+                'concepto'        => "Abono a Proveedor " . $infoCompra['nombre_empresa'] . " Doc: " . $infoCompra['numero_documento'],
+                'usuarioRegistro' => $usuario_activo
+            ];
+
+            $datos_detalle = [
+                // CARGO: Proveedores (Disminuye Pasivo)
+                ['cuenta_id' => $id_proveedores_cp, 'debito' => $monto, 'credito' => 0.00],
+                
+                // ABONO: Banco/Caja (Disminuye Activo)
+                ['cuenta_id' => $id_cuenta_haber_contable, 'debito' => 0.00, 'credito' => $monto]
+            ];
+
+            $res_contable = registrarAsientoAutomatico($pdo, $codigo_institucion_sesion, $datos_encabezado, $datos_detalle);
+
+            if (!$res_contable['respuesta']) {
+                throw new Exception("Error Contable: " . $res_contable['mensaje']);
+            }
+
+            // Opcional: Actualizar el pago con el ID del asiento
+            // $pdo->prepare("UPDATE compras_pagos SET id_asiento = ? WHERE id = ?")->execute([$res_contable['numero_asiento'], $id_pago]);
 
             $pdo->commit();
-            
-            // IMPORTANTE: Esto es lo que recibe el JS
-            echo json_encode(['respuesta' => true, 'mensaje' => 'Pago registrado correctamente.']);
+            echo json_encode(['respuesta' => true, 'mensaje' => 'Pago registrado, saldo descontado y partida generada.']);
 
         } catch (Exception $e) {
-            $pdo->rollBack();
+            if ($pdo->inTransaction()) $pdo->rollBack();
             echo json_encode(['respuesta' => false, 'mensaje' => $e->getMessage()]);
         }
         break;
-        case 'listarHistorialPagos':
-                try {
-                    // VERIFICACIÓN DE COLUMNAS:
-                    // Asegúrate que en tu tabla 'compras_pagos' la llave primaria se llame 'id' o 'id_pago'.
-                    // Aquí asumo que se llama 'id' basado en tu mensaje anterior.
-                    
-                    $sql = "SELECT 
-                                p.fecha_pago,
-                                pr.nombre_empresa, 
-                                c.numero_documento,
-                                p.monto_abonado,
-                                p.referencia_pago,
-                                COALESCE(t.nombre_cuenta, 'Sin cuenta') as banco
-                            FROM compras_pagos p
-                            INNER JOIN compras_cabecera c ON p.id_compra = c.id_compra
-                            INNER JOIN proveedores pr ON c.id_proveedores = pr.id_proveedores
-                            LEFT JOIN tesoreria_cuentas t ON p.id_cuenta_tesoreria = t.id
-                            WHERE c.codigo_institucion = ?
-                            ORDER BY p.id DESC"; 
-                    
-                    $stmt = $pdo->prepare($sql);
-                    $stmt->execute([$codigo_institucion_sesion]);
-                    $historial = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                    
-                    echo json_encode(['data' => $historial]);
 
-                } catch (Exception $e) {
-                    // AHORA SÍ VEREMOS EL ERROR
-                    echo json_encode(['data' => [], 'error' => $e->getMessage()]);
-                }
+    case 'listarHistorialPagos':
+        try {
+            $sql = "SELECT 
+                        p.fecha_pago,
+                        pr.nombre_empresa, 
+                        c.numero_documento,
+                        p.monto_abonado,
+                        p.referencia_pago
+                    FROM compras_pagos p
+                    INNER JOIN compras_cabecera c ON p.id_compra = c.id_compra
+                    INNER JOIN proveedores pr ON c.id_proveedores = pr.id_proveedores
+                    WHERE c.codigo_institucion = ?
+                    ORDER BY p.id DESC"; // Asumiendo que 'id' es la PK de compras_pagos
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$codigo_institucion_sesion]);
+            $historial = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode(['data' => $historial]);
+
+        } catch (Exception $e) {
+            echo json_encode(['data' => [], 'error' => $e->getMessage()]);
+        }
         break;
+
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida']);
         break;
