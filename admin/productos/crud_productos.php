@@ -62,7 +62,7 @@ function generarCodigoProducto($pdo, $codigo_categoria, $codigo_institucion_sesi
 switch ($accion) {
     case 'listarProductos':
         try {
-            $sql = "SELECT p.id_productos, p.codigo_interno, p.descripcion, p.precio_unitario, p.stock_actual, c.descripcion AS categoria_descripcion
+            $sql = "SELECT p.id_productos, p.codigo_interno, p.descripcion, p.precio_unitario, p.stock_actual, c.descripcion AS categoria_descripcion, p.activo
                     FROM catalogo_productos p
                     LEFT JOIN catalogo_categoria c ON p.codigo_categoria = c.codigo AND p.codigo_institucion = c.codigo_institucion
                     WHERE p.codigo_institucion = :codigo_institucion_sesion
@@ -108,6 +108,8 @@ switch ($accion) {
         $codigo_fiscal = $_POST['codigo_fiscal'] ?? '';
         $codigo_ganancia = $_POST['porcentaje_ganancia'] ?? ''; // Nuevo campo
         $fecha_vencimiento = $_POST['fecha_vencimiento'] ?? null; // Nuevo campo
+        $activo = isset($_POST['activo']) ? 'true' : 'false';
+        $unidades_por_caja = $_POST['unidades_por_caja'] ?? 1;
 
         if (empty($fecha_vencimiento)) {
             $fecha_vencimiento = null;
@@ -143,16 +145,16 @@ switch ($accion) {
                 if (!$codigo_generado) {
                     throw new Exception("No se pudo generar el código del producto.");
                 }
-                $sql = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, codigo_categoria, codigo_fiscal, descripcion, unidad_medida, tipo_item, impuesto_aplicable, stock_actual, stock_minimo, precio_costo, precio_unitario, codigo_barra, comentario, codigo_ganancia, fecha_vencimiento) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $sql = "INSERT INTO catalogo_productos (codigo_interno, codigo_institucion, codigo_categoria, codigo_fiscal, descripcion, unidad_medida, tipo_item, impuesto_aplicable, stock_actual, stock_minimo, precio_costo, precio_unitario, codigo_barra, comentario, codigo_ganancia, fecha_vencimiento, activo, unidades_por_caja) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $codigo_ganancia, $fecha_vencimiento]);
+                $stmt->execute([$codigo_generado, $codigo_institucion_sesion, $codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $codigo_ganancia, $fecha_vencimiento, $activo, $unidades_por_caja]);
                 echo json_encode(['respuesta' => true, 'mensaje' => 'Producto creado exitosamente.', 'nuevo_codigo' => $codigo_generado]);
             } else {
                 $codigo_interno = $_POST['codigo_interno'];
-                $sql = "UPDATE catalogo_productos SET codigo_categoria = ?, codigo_fiscal = ?, descripcion = ?, unidad_medida = ?, tipo_item = ?, impuesto_aplicable = ?, stock_actual = ?, stock_minimo = ?, precio_costo = ?, precio_unitario = ?, codigo_barra = ?, comentario = ?, codigo_ganancia = ?, fecha_vencimiento = ? WHERE id_productos = ? AND codigo_institucion = ?";
+                $sql = "UPDATE catalogo_productos SET codigo_categoria = ?, codigo_fiscal = ?, descripcion = ?, unidad_medida = ?, tipo_item = ?, impuesto_aplicable = ?, stock_actual = ?, stock_minimo = ?, precio_costo = ?, precio_unitario = ?, codigo_barra = ?, comentario = ?, codigo_ganancia = ?, fecha_vencimiento = ?, activo = ?, unidades_por_caja = ? WHERE id_productos = ? AND codigo_institucion = ?";
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute([$codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $codigo_ganancia, $fecha_vencimiento, $id_productos, $codigo_institucion_sesion]);
+                $stmt->execute([$codigo_categoria, $codigo_fiscal, $descripcion, $unidad_medida, $tipo_item, $impuesto_aplicable, $stock_actual, $stock_minimo, $precio_costo, $precio_unitario_calculado, $codigo_barra, $comentario, $codigo_ganancia, $fecha_vencimiento, $activo, $unidades_por_caja, $id_productos, $codigo_institucion_sesion]);
                 echo json_encode(['respuesta' => true, 'mensaje' => 'Producto guardado exitosamente.']);
             }
         } catch (PDOException $e) {
@@ -161,7 +163,27 @@ switch ($accion) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error: ' . $e->getMessage()]);
         }
         break;
+        // 3. NUEVA ACCIÓN: CAMBIO RÁPIDO DE ESTADO (DESDE DATATABLE)
+        case 'cambiarEstado':
+            $id_productos = $_POST['id_productos'];
+            $nuevo_estado = $_POST['estado']; // 'true' o 'false'
 
+            try {
+                $sql = "UPDATE catalogo_productos SET activo = :estado WHERE id_productos = :id AND codigo_institucion = :inst";
+                $stmt = $pdo->prepare($sql);
+                // Postgres necesita booleano 'true'/'false' o 't'/'f' string
+                $estadoBool = ($nuevo_estado === 'true' || $nuevo_estado === '1') ? 'true' : 'false';
+                
+                $stmt->bindParam(':estado', $estadoBool); 
+                $stmt->bindParam(':id', $id_productos);
+                $stmt->bindParam(':inst', $codigo_institucion_sesion);
+                $stmt->execute();
+
+                echo json_encode(['respuesta' => true, 'mensaje' => 'Estado actualizado correctamente.']);
+            } catch (PDOException $e) {
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error al cambiar estado.']);
+            }
+            break;
     case 'obtenerCatalogos':
         try {
             $catalogos = [];
@@ -175,13 +197,13 @@ switch ($accion) {
             $sql_unidades = "SELECT codigo, descripcion FROM cat_014 ORDER BY descripcion";
             $catalogos['unidades_medida'] = $pdo->query($sql_unidades)->fetchAll(PDO::FETCH_ASSOC);
 
-            $sql_tipos = "SELECT codigo, descripcion FROM cat_003 ORDER BY descripcion";
+            $sql_tipos = "SELECT codigo, descripcion FROM cat_011 ORDER BY id";
             $catalogos['tipos_item'] = $pdo->query($sql_tipos)->fetchAll(PDO::FETCH_ASSOC);
 
-            $sql_impuestos = "SELECT codigo, descripcion, porcentaje, monto_fijo, tipo_impuesto FROM cat_015 ORDER BY descripcion";
+            $sql_impuestos = "SELECT codigo, descripcion, porcentaje, monto_fijo, tipo_impuesto FROM cat_015 ORDER BY id";
             $catalogos['impuestos'] = $pdo->query($sql_impuestos)->fetchAll(PDO::FETCH_ASSOC);
             
-            $sql_ganancia = "SELECT codigo, descripcion, porcentaje FROM catalogo_ganancia WHERE codigo_institucion = :codigo_institucion ORDER BY descripcion";
+            $sql_ganancia = "SELECT codigo, descripcion, porcentaje FROM catalogo_ganancia WHERE codigo_institucion = :codigo_institucion ORDER BY id_ganancia";
             $stmt_ganancia = $pdo->prepare($sql_ganancia);
             $stmt_ganancia->bindParam(':codigo_institucion', $codigo_institucion_sesion);
             $stmt_ganancia->execute();
@@ -209,7 +231,71 @@ switch ($accion) {
             echo json_encode(['respuesta' => false, 'mensaje' => 'Error al obtener impuesto: ' . $e->getMessage()]);
         }
         break;
-
+        case 'eliminar':
+            $id_productos = $_POST['id_productos'] ?? '';
+    
+            try {
+                $pdo->beginTransaction();
+    
+                // 1. Obtener el código interno del producto (Necesario para buscar en ventas/compras)
+                $sqlGet = "SELECT codigo_interno, descripcion FROM catalogo_productos 
+                           WHERE id_productos = :id AND codigo_institucion = :inst";
+                $stmtGet = $pdo->prepare($sqlGet);
+                $stmtGet->execute([':id' => $id_productos, ':inst' => $codigo_institucion_sesion]);
+                $producto = $stmtGet->fetch(PDO::FETCH_ASSOC);
+    
+                if (!$producto) {
+                    echo json_encode(['respuesta' => false, 'mensaje' => 'El producto no existe o no tienes permiso.']);
+                    $pdo->rollBack();
+                    exit;
+                }
+    
+                $codigo_interno = $producto['codigo_interno'];
+    
+                // 2. Verificar Historial en VENTAS
+                $sqlVentas = "SELECT COUNT(*) FROM ventas_detalle WHERE codigo_producto = :codigo";
+                $stmtVentas = $pdo->prepare($sqlVentas);
+                $stmtVentas->execute([':codigo' => $codigo_interno]);
+                $conteoVentas = $stmtVentas->fetchColumn();
+    
+                if ($conteoVentas > 0) {
+                    echo json_encode([
+                        'respuesta' => false, 
+                        'mensaje' => "No se puede eliminar: El producto '{$producto['descripcion']}' tiene $conteoVentas registros en VENTAS."
+                    ]);
+                    $pdo->rollBack();
+                    exit;
+                }
+    
+                // 3. Verificar Historial en COMPRAS
+                $sqlCompras = "SELECT COUNT(*) FROM compras_detalle WHERE codigo_producto = :codigo";
+                $stmtCompras = $pdo->prepare($sqlCompras);
+                $stmtCompras->execute([':codigo' => $codigo_interno]);
+                $conteoCompras = $stmtCompras->fetchColumn();
+    
+                if ($conteoCompras > 0) {
+                    echo json_encode([
+                        'respuesta' => false, 
+                        'mensaje' => "No se puede eliminar: El producto '{$producto['descripcion']}' tiene $conteoCompras registros en COMPRAS."
+                    ]);
+                    $pdo->rollBack();
+                    exit;
+                }
+    
+                // 4. Si pasa las verificaciones, ELIMINAR
+                $sqlDel = "DELETE FROM catalogo_productos WHERE id_productos = :id";
+                $stmtDel = $pdo->prepare($sqlDel);
+                $stmtDel->execute([':id' => $id_productos]);
+    
+                $pdo->commit();
+                echo json_encode(['respuesta' => true, 'mensaje' => 'Producto eliminado correctamente del sistema.']);
+    
+            } catch (PDOException $e) {
+                $pdo->rollBack();
+                // Capturar errores de integridad referencial de la BD por si acaso
+                echo json_encode(['respuesta' => false, 'mensaje' => 'Error de Base de Datos: ' . $e->getMessage()]);
+            }
+            break;
     default:
         echo json_encode(['respuesta' => false, 'mensaje' => 'Acción no válida.']);
         break;

@@ -17,7 +17,7 @@
   <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"> -->
 
   <!-- Select2 -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
 
   <!-- DataTables -->
@@ -39,7 +39,9 @@
   <script src="./js/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
+    <!-- SELECT 2 -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
     <script src="./js/jqueryNumeric/jquery.numeric.js"></script>
     <script src="js/jquery-validation-1.19.1/dist/jquery.validate.min.js"></script>
     <script src="js/jquery-validation-1.19.1/dist/localization/messages_es.js"></script>
@@ -157,11 +159,74 @@
               <a href="#">Acerca de...</a>
             </small>
           </footer>
+          <div class="modal fade" id="modalInactividad" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="inactividadLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+              <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header bg-danger text-white border-0">
+                  <h5 class="modal-title fw-bold" id="inactividadLabel">
+                    <i class="fas fa-user-clock me-2"></i> Sesión Suspendida
+                  </h5>
+                </div>
+                <div class="modal-body text-center p-4">
+                  <div class="mb-3">
+                    <i class="fas fa-shield-alt fa-4x text-secondary opacity-50"></i>
+                  </div>
+                  <h4 class="fw-bold text-dark">¡Hola! ¿Sigues ahí?</h4>
+                  <p class="text-muted mt-2">
+                    Hemos detectado inactividad en tu sesión por más de 5 minutos. 
+                    Por motivos de seguridad, el sistema se ha pausado.
+                  </p>
+                </div>
+                <div class="modal-footer justify-content-center border-0 bg-light pb-4">
+                  <a href="logout.php" class="btn btn-danger btn-lg px-5 shadow-sm rounded-pill transition-hover">
+                    <i class="fas fa-sign-out-alt me-2"></i> Regresar al Inicio
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+          
         {% else %}
           {% block menu %}{% endblock %}
           {% block loginUser %}{% endblock %}
         {% endif %}
     </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        // Tiempo en milisegundos (5 minutos = 300000 ms)
+        // Para pruebas puedes cambiarlo a 5000 (5 segundos)
+        const TIEMPO_INACTIVIDAD = 600000; 
+        let temporizador;
 
+        // Función que muestra el modal profesional
+        const mostrarModalInactividad = () => {
+          const modalElement = document.getElementById('modalInactividad');
+          if (modalElement) {
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+          }
+        };
+
+        // Función para reiniciar el contador
+        const reiniciarTemporizador = () => {
+          clearTimeout(temporizador);
+          // Solo reiniciamos si el modal NO está visible (para no ocultarlo si ya salió)
+          const modalElement = document.getElementById('modalInactividad');
+          if (modalElement && !modalElement.classList.contains('show')) {
+             temporizador = setTimeout(mostrarModalInactividad, TIEMPO_INACTIVIDAD);
+          }
+        };
+
+        // Eventos que detectan actividad del usuario
+        const eventosActividad = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+        
+        eventosActividad.forEach(evento => {
+          document.addEventListener(evento, reiniciarTemporizador);
+        });
+
+        // Iniciar el temporizador al cargar
+        reiniciarTemporizador();
+      });
+    </script>
   </body>
 </html>
