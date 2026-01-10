@@ -214,13 +214,16 @@ class Twig_Node implements Twig_NodeInterface
         unset($this->nodes[$name]);
     }
 
+    #[\ReturnTypeWillChange]
     public function count()
     {
         return count($this->nodes);
     }
 
-    public function getIterator()
-    {
-        return new ArrayIterator($this->nodes);
-    }
+// CÓDIGO CORREGIDO
+#[\ReturnTypeWillChange]
+public function getIterator()
+{
+    return new ArrayIterator($this->nodes);
+}
 }
